@@ -3,6 +3,7 @@
 
 import time
 import epics
+import sys
 import numpy as np
 
 from pprint import pprint
@@ -149,6 +150,13 @@ def import_sh_data(fn):
 
     data = {'linear': {},
             'calibration': {}}
+
+    name_map = {
+        'gain_rmsFit': 'gain_rms_fit',
+        'rotaryPotOffset': 'rotary_pot_offset',
+        'linear_offset': 'linear_phase_offset',
+    }
+
     for line in lines:
         line = line.strip()
         if not line:
@@ -164,7 +172,7 @@ def import_sh_data(fn):
                 if name == 'CALCAMANGLE':
                     data['angles'] = values
                 elif name == 'CALCAMPOT':
-                    data['rotary'] = [float(item) for item in items[2:]]
+                    data['rotary'] = values
                 else:
                     linear_idx = int(name[-1])
                     data['linear'][linear_idx] = values
@@ -178,9 +186,11 @@ def import_sh_data(fn):
 
             items = [item for item in line.split(' ') if item]
             name = items[0]
-            print(name, items[-1])
             if name.lower() != 'summary:':
+                name = name_map.get(name, name)
                 data['calibration'][name] = float(items[-1])
+            print(name, items[-1])
+
     return data
 
 
@@ -221,14 +231,17 @@ def get_calibration_data(cams, cam_num, velocity, dwell,
     return data
 
 
-def shift_for_polyfit(angles, rotary_pot):
+def shift_for_polyfit(angles, rotary_pot, debug=False):
     # step = angles[1] - angles[0]
     # Find min/max rotary pot values, search for the deadband
     imin = np.argmin(rotary_pot)
-    # imax = np.argmax(rotary_pot)
-    # deadband_size = abs(imax - imin)
+    imax = np.argmax(rotary_pot)
+    deadband_size = abs(imax - imin)
     deadband_shift = len(rotary_pot) - imin
 
+    if debug:
+        print('deadband size', deadband_size, file=sys.stderr)
+        print('deadband shift', deadband_shift, file=sys.stderr)
     # Circularly shift rotary potentiometer data right for linear fitting
     rotary_pot = np.roll(rotary_pot, deadband_shift)
 
@@ -242,11 +255,7 @@ def sinusoid(angles, amp, freq, phase, offset):
     return amp * sin(deg2rad(freq * angles + phase)) + offset
 
 
-def cam_sinusoidal_fit(angles, lin_pot, plot=False):
-    'Perform sinusoidal fit on motor angles and linear pot data'
-    angles = np.asarray(angles)
-    lin_pot = np.asarray(lin_pot)
-
+def sinusoid_params_from_linear_pot(angles, lin_pot):
     amp_guess = (np.max(lin_pot) - np.min(lin_pot)) / 2
     freq_guess = 1.
 
@@ -256,6 +265,16 @@ def cam_sinusoidal_fit(angles, lin_pot, plot=False):
                            sin(rad_x) * lin_pot_transp)
     phase_guess = rad2deg(phase_rad)
     offset_guess = np.mean(lin_pot)
+    return amp_guess, freq_guess, phase_guess[0, 0], offset_guess
+
+
+def cam_sinusoidal_fit(angles, lin_pot, plot=False):
+    'Perform sinusoidal fit on motor angles and linear pot data'
+    angles = np.asarray(angles)
+    lin_pot = np.asarray(lin_pot)
+
+    guess = sinusoid_params_from_linear_pot(angles, lin_pot)
+    amp_guess, freq_guess, phase_guess, offset_guess = guess
 
     if plot:
         plt.figure(0)
@@ -270,18 +289,8 @@ def cam_sinusoidal_fit(angles, lin_pot, plot=False):
             plt.plot(opt, label='iteration {}'.format(iter_))
         return np.sum((opt - lin_pot) ** 2)
 
-    def partials(f, p, dp, F):
-        amp, freq, phase, offset = p
-        # NOTE: untested - using different fitting algorithm making this unnecessary
-        return np.matrix([
-            sin(deg2rad(freq * angles + phase)),
-            deg2rad(amp * angles) * cos(deg2rad(freq * angles + phase)),
-            deg2rad(amp) * cos(deg2rad(freq * angles + phase)),
-            np.ones_like(angles),
-        ])
-
-    guess = [amp_guess, freq_guess, phase_guess[0, 0], offset_guess]
-    res = scipy.optimize.minimize(optimize_me, x0=guess, tol=0.0000001)
+    res = scipy.optimize.minimize(optimize_me, x0=guess, tol=0.0000001,
+                                  options={'maxiter': 1000, 'disp': True})
 
     if plot:
         plt.legend()
@@ -294,7 +303,7 @@ def cam_sinusoidal_fit(angles, lin_pot, plot=False):
             lin_pot_fitted)
 
 
-def fit_data(data, plot=True):
+def fit_data(data, plot=False):
     '''According to appropriate linear potentiometer, fit cam rotary pot'''
     cam_num = data['cam']
     angles = data['angles']
@@ -302,6 +311,7 @@ def fit_data(data, plot=True):
     linear_pots = [data['linear'][num] for num in cam_to_pot_numbers[cam_num]]
 
     shifted_angles, shifted_rotary_pot = shift_for_polyfit(angles, rotary_pot)
+    data['shifted_rotary'] = shifted_rotary_pot
     poly_rot = np.poly1d(np.polyfit(shifted_angles, shifted_rotary_pot, 1))
 
     yoff = poly_rot(np.asarray(shifted_angles))
@@ -323,33 +333,74 @@ def fit_data(data, plot=True):
         avg_voltage = data['calibration']['average_voltage']
 
     gain = avg_voltage / poly_rot.coeffs[0]
-    print('calculated gain', gain)
-    print('calculated gain_rms_fit', gain_rms_fit)
     linear_pot = linear_pots[0]
 
     fit_result, linear_fitted = cam_sinusoidal_fit(angles, linear_pot)
 
-    linear_offset = fit_result['offset']
+    linear_phase_offset = fit_result['phase']
 
-    plt.ion()
-    plt.figure(cam_num)
-    plt.clf()
-    plt.plot(linear_pot, 'x', label='Data', lw=1)
-    plt.plot(linear_fitted, label='Fitted')
-    print(linear_fitted, linear_pot)
-    plt.legend()
+    if plot:
+        plt.ion()
+        plt.figure(cam_num)
+        plt.clf()
+        plt.plot(linear_pot, 'x', label='Data', lw=1)
+        plt.plot(linear_fitted, label='Fitted')
+        plt.legend()
 
     linear_offset_rms_fit = np.std(linear_pot - linear_fitted) * 2000.
-    rotary_offset = (rotary_pot[0] / avg_voltage) * gain - linear_offset
-    return dict(gain=gain,
+    rotary_offset = (rotary_pot[0] / avg_voltage) * gain - linear_phase_offset
+    return dict(average_voltage=avg_voltage,
+                gain=gain,
                 gain_rms_fit=gain_rms_fit,
-                linear_offset_rms_fit=linear_offset_rms_fit,
+                linear_phase_offset_rms_fit=linear_offset_rms_fit,
+                linear_phase_offset=linear_phase_offset,
                 rotary_pot_offset=rotary_offset,
                 )
 
 
+def compare_fits(data, labels, fit_info_dicts):
+    cam_num = data['cam']
+    angles = np.asarray(data['angles'])
+    # rotary_pot = data['shifted_rotary']
+    linear_pot = data['linear'][cam_to_pot_numbers[cam_num][0]]
+    parameter_comparison = {
+        'average_voltage': [],
+        'gain': [],
+        'gain_rms_fit': [],
+        'linear_offset_rms_fit': [],
+        'linear_phase_offset': [],
+        'rotary_pot_offset': [],
+    }
 
-def setup(prefix='camsim:', linear_pot_format='LP{}ADCM'):
+    plt.clf()
+
+    plt.plot(angles, linear_pot, 'x', label='Linear pot')
+    for idx, (fit_info, label) in enumerate(zip(fit_info_dicts, labels), 1):
+        for key, value_list in parameter_comparison.items():
+            value_list.append(fit_info.get(key, None))
+
+        fit_info['average_voltage']
+        fit_info['gain']
+        fit_info['gain_rms_fit']
+        fit_info['linear_phase_offset']
+        fit_info['rotary_pot_offset']
+
+        params = sinusoid_params_from_linear_pot(angles, linear_pot)
+        amp_guess, freq_guess, phase_guess, offset_guess = params
+        d = sinusoid(angles, amp_guess, freq_guess, fit_info['linear_phase_offset'],
+                     offset_guess)
+        plt.plot(angles, d, label=(label if label else 'Fit {}'.format(idx)))
+
+    print('Parameter'.ljust(30, ' '), '\t'.join(labels))
+    for key, values in parameter_comparison.items():
+        vstr = '\t'.join('{:.5f}'.format(v) if v else 'None' for v in values)
+        print(key.ljust(30, ' '), vstr)
+
+    plt.legend()
+    plt.show()
+
+
+def setup_hgvpu(prefix='camsim:', linear_pot_format='LP{}ADCM'):
     cams = OrderedDict(
         (cam,
          CamMotorAndPots(prefix, cam_number=cam,
@@ -361,7 +412,7 @@ def setup(prefix='camsim:', linear_pot_format='LP{}ADCM'):
 if __name__ == '__main__':
     if 0:
         print('Connecting')
-        motors = setup(prefix='camsim:')
+        motors = setup_hgvpu(prefix='camsim:')
         voltage_pv = PV('voltage_pvname', auto_monitor=False)
         print('Running calibration test...')
         data = get_calibration_data(motors, 1, velocity=10000.0, dwell=0.01,
@@ -371,5 +422,11 @@ if __name__ == '__main__':
     # data = import_sh_data('data/2017-10-24/cam2_2017-10-24_10-22'); data['cam'] = 2
     data = import_sh_data('data/2017-10-24/cam1_2017-10-24_10-12'); data['cam'] = 1
     fit_results = fit_data(data)
-    print('from file', data['calibration'])
-    print('calculated', fit_results)
+
+    plt.figure(10)
+    compare_fits(data,
+                 labels=['From file', 'Python calculated'],
+                 fit_info_dicts=[data['calibration'], fit_results],
+                 )
+    plt.ioff()
+    plt.show()
