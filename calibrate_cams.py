@@ -78,18 +78,21 @@ class CamMotorAndPots(object):
         self.info = info
 
         self.motor = epics.Motor(self.prefix + info.motor)
-        self.stop_go_pv = self.motor.get_pv('SPMG', auto_monitor=False)
-        self.setpoint_pv = self.motor.get_pv('DVAL', auto_monitor=False)
-        self.readback_pv = self.motor.get_pv('DRBV', auto_monitor=False)
-        self.velocity_pv = self.motor.get_pv('VELO', auto_monitor=False)
+        self.stop_go_pv = self.motor.PV('SPMG', auto_monitor=False)
+        self.stop_pv = self.motor.PV('STOP', auto_monitor=False)
+        self.calibration_set_pv = self.motor.PV('SET', auto_monitor=False)
+        self.setpoint_pv = self.motor.PV('VAL', auto_monitor=False)
+        self.readback_pv = self.motor.PV('DRBV', auto_monitor=False)
+        self.velocity_pv = self.motor.PV('VELO', auto_monitor=False)
         self.rotary_pot_pv = PV(self.prefix + info.rotary_pot)
         self.linear_pot_pvs = [
             PV(self.prefix + linear_pot_format.format(pot_number))
             for pot_number in info.linear_pots
         ]
 
-        self.all_pvs = [self.stop_go_pv, self.setpoint_pv, self.readback_pv,
-                        self.velocity_pv, self.rotary_pot_pv,
+        self.all_pvs = [self.stop_go_pv, self.stop_pv, self.setpoint_pv,
+                        self.readback_pv, self.velocity_pv, self.rotary_pot_pv,
+                        self.calibration_set_pv,
                         ] + self.linear_pot_pvs
 
         for pv in self.all_pvs:
@@ -108,7 +111,17 @@ class CamMotorAndPots(object):
     def move(self, pos):
         ret = self.motor.move(val=pos, dial=True, wait=True)
         if ret != 0:
-            raise epics.Motor.MotorException('Move failed: ret={}'.format(ret))
+            raise epics.motor.MotorException('Move failed: ret={}'.format(ret))
+
+    def calibrate(self, position):
+        assert self.connected
+
+        self.stop_pv.put(1, wait=True)
+        try:
+            self.calibration_set_pv.put(1, wait=True)
+            self.setpoint_pv.put(position, wait=True)
+        finally:
+            self.calibration_set_pv.put(0, wait=True)
 
     def __repr__(self):
         return ('<CamMotorAndPots cam_number={cam_number} prefix={prefix!r} '
@@ -187,8 +200,11 @@ def import_sh_data(fn):
             items = [item for item in line.split(' ') if item]
             name = items[0]
             if name.lower() != 'summary:':
-                name = name_map.get(name, name)
-                data['calibration'][name] = float(items[-1])
+                if name.lower() == 'cam_number':
+                    data['cam'] = int(items[-1])
+                else:
+                    name = name_map.get(name, name)
+                    data['calibration'][name] = float(items[-1])
             print(name, items[-1])
 
     return data
@@ -219,7 +235,7 @@ def get_calibration_data(cams, cam_num, velocity, dwell,
             'voltages': [],
             }
 
-    for pos in move_through_range(motor, 0, 4):
+    for pos in move_through_range(motor, 0, 360, 2):
         time.sleep(dwell)
         data['angles'].append(pos)
         data['rotary'].append(motor.rotary_pot_pv.get())
@@ -329,6 +345,7 @@ def fit_data(data, plot=False):
 
     if 'voltages' in data:
         avg_voltage = np.average(data['voltages'])
+        data['calibration']['average_voltage'] = avg_voltage
     else:
         avg_voltage = data['calibration']['average_voltage']
 
@@ -379,16 +396,10 @@ def compare_fits(data, labels, fit_info_dicts):
         for key, value_list in parameter_comparison.items():
             value_list.append(fit_info.get(key, None))
 
-        fit_info['average_voltage']
-        fit_info['gain']
-        fit_info['gain_rms_fit']
-        fit_info['linear_phase_offset']
-        fit_info['rotary_pot_offset']
-
         params = sinusoid_params_from_linear_pot(angles, linear_pot)
         amp_guess, freq_guess, phase_guess, offset_guess = params
-        d = sinusoid(angles, amp_guess, freq_guess, fit_info['linear_phase_offset'],
-                     offset_guess)
+        d = sinusoid(angles, amp_guess, freq_guess,
+                     fit_info['linear_phase_offset'], offset_guess)
         plt.plot(angles, d, label=(label if label else 'Fit {}'.format(idx)))
 
     print('Parameter'.ljust(30, ' '), '\t'.join(labels))
@@ -409,18 +420,77 @@ def setup_hgvpu(prefix='camsim:', linear_pot_format='LP{}ADCM'):
     return cams
 
 
+def write_data(f, data, segment='UND1:150', precision=5):
+    prefix = 'USEG:{}:'.format(segment)
+    name_map = OrderedDict(
+        [('average_voltage', 'CALVOLTAVG'),
+         ('angles', 'CALCAMANGLE'),
+         ('rotary', 'CALCAMPOT'),
+         ]
+    )
+
+    linear_pot_map = OrderedDict(
+        [(1, 'CALGDRPOT1'),
+         (2, 'CALGDRPOT2'),
+         (3, 'CALGDRPOT3'),
+         (5, 'CALGDRPOT5'),
+         (6, 'CALGDRPOT6'),
+         (7, 'CALGDRPOT7'),
+         ]
+    )
+
+    def array_to_string(arr, precision):
+        fmt = '{:.%df}' % precision
+        return ' '.join(fmt.format(v) for v in arr)
+
+    def write_array(f, name, value):
+        print('{} {} {}'.format(prefix + name, len(value),
+                                array_to_string(value, precision),
+                                ),
+              file=f)
+
+    for name, write_name in name_map.items():
+        if name == 'average_voltage':
+            value = data['calibration'][name]
+            print('{} {}'.format(prefix + write_name, value), file=f)
+        else:
+            value = data[name]
+            write_array(f, write_name, value)
+
+    for pot_idx, write_name in linear_pot_map.items():
+        write_array(f, write_name, data['linear'][pot_idx])
+
+    print('', file=f)
+    print('Summary:', file=f)
+    print('cam_number = {}'.format(data['cam']), file=f)
+    for key, value in sorted(data['calibration'].items()):
+        fmt = '{:.%df}' % precision
+        print('{} = {}'.format(key, fmt.format(value)), file=f)
+
+
 if __name__ == '__main__':
     if 0:
         print('Connecting')
         motors = setup_hgvpu(prefix='camsim:')
-        voltage_pv = PV('voltage_pvname', auto_monitor=False)
+        voltage_pv = PV('camsim:voltage', auto_monitor=False)
         print('Running calibration test...')
         data = get_calibration_data(motors, 1, velocity=10000.0, dwell=0.01,
                                     voltage_pv=voltage_pv)
         pprint(data)
+        write_data(sys.stdout, data)
 
     # data = import_sh_data('data/2017-10-24/cam2_2017-10-24_10-22'); data['cam'] = 2
-    data = import_sh_data('data/2017-10-24/cam1_2017-10-24_10-12'); data['cam'] = 1
+    data0 = import_sh_data('data/2017-10-24/cam1_2017-10-24_10-12'); data0['cam'] = 1
+    with open('test.txt', 'wt') as f:
+        write_data(f, data0)
+
+    data1 = import_sh_data('test.txt')
+
+    print('one', repr(data0))
+    print('two', repr(data1))
+    assert repr(data0) == repr(data1)
+
+    data = data0
     fit_results = fit_data(data)
 
     plt.figure(10)
