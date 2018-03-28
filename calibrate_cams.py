@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 # Cam positioner calibration (rotary/linear potentiometers)
 
+from __future__ import print_function
 import time
 import epics
 import sys
@@ -156,7 +157,7 @@ def get_all_linear_pots(cams):
     return pots
 
 
-def import_sh_data(fn):
+def load_data_from_file(fn):
     'Import a shell script which stores cam calibration data'
     with open(fn, 'rt') as f:
         lines = [line.strip() for line in f.readlines()]
@@ -226,6 +227,7 @@ def get_calibration_data(cams, cam_num, velocity, dwell,
 
     motor = cams[cam_num]
     motor.enable()
+    motor.calibrate(0.0)
     motor.velocity_pv.put(velocity, wait=True)
 
     data = {'cam': cam_num,
@@ -233,6 +235,7 @@ def get_calibration_data(cams, cam_num, velocity, dwell,
             'rotary': [],
             'linear': {key: [] for key in all_linear_pots},
             'voltages': [],
+            'calibration': {},
             }
 
     for pos in move_through_range(motor, 0, 360, 2):
@@ -420,6 +423,15 @@ def setup_hgvpu(prefix='camsim:', linear_pot_format='LP{}ADCM'):
     return cams
 
 
+def setup_sxu(prefix='camsim:', linear_pot_format='LP{}ADCM'):
+    cams = OrderedDict(
+        (cam,
+         CamMotorAndPots(prefix, cam_number=cam,
+                         linear_pot_format=linear_pot_format))
+        for cam in axis_info)
+    return cams
+
+
 def write_data(f, data, segment='UND1:150', precision=5):
     prefix = 'USEG:{}:'.format(segment)
     name_map = OrderedDict(
@@ -451,6 +463,8 @@ def write_data(f, data, segment='UND1:150', precision=5):
 
     for name, write_name in name_map.items():
         if name == 'average_voltage':
+            if 'calibration' not in data:
+                continue
             value = data['calibration'][name]
             print('{} {}'.format(prefix + write_name, value), file=f)
         else:
@@ -463,40 +477,94 @@ def write_data(f, data, segment='UND1:150', precision=5):
     print('', file=f)
     print('Summary:', file=f)
     print('cam_number = {}'.format(data['cam']), file=f)
-    for key, value in sorted(data['calibration'].items()):
-        fmt = '{:.%df}' % precision
-        print('{} = {}'.format(key, fmt.format(value)), file=f)
+    if 'calibration' in data:
+        for key, value in sorted(data['calibration'].items()):
+            fmt = '{:.%df}' % precision
+            print('{} = {}'.format(key, fmt.format(value)), file=f)
 
 
 if __name__ == '__main__':
-    if 0:
-        print('Connecting')
-        motors = setup_hgvpu(prefix='camsim:')
-        voltage_pv = PV('camsim:voltage', auto_monitor=False)
+    import argparse
+
+    parser = argparse.ArgumentParser()
+    commands = parser.add_mutually_exclusive_group()
+    commands.add_argument('--calibrate', type=str,
+                          help='Calibrate motors with the given EPICS prefix')
+    commands.add_argument('--load', type=str,
+                          help='Load calibration data from file')
+
+    parser.add_argument('--store',
+                        action='store_true',
+                        help='Store calibration data on motor')
+    parser.add_argument('--save-to', type=str,
+                        help='Save calibration data to file')
+
+    parser.add_argument('-l', '--line', type=str, choices=('hgvpu', 'sxu'),
+                        default='hgvpu',
+                        help='Specify the undulator line')
+    parser.add_argument('-s', '--segment', type=str,
+                        help='Specify the undulator segment')
+    parser.add_argument('-n', '--number', type=int,
+                        help='Specify the cam positioner number')
+    parser.add_argument('-p', '--plot',
+                        action='store_true',
+                        help='Plot relevant calibration information')
+    parser.add_argument('--velocity', type=float, default=1.0,
+                        help='Velocity for calibration')
+    parser.add_argument('--voltage-pv', type=str, default='voltage',
+                        help='Voltage PV suffix')
+    parser.add_argument('--compare-to', type=str,
+                        help='Compare calibration results with this file')
+    parser.add_argument('--dwell',
+                        type=float, default=1.0,
+                        help='Dwell time after move')
+    parser.add_argument('-v', '--verbose',
+                        action='store_true',
+                        help='Verbose operations')
+    args = parser.parse_args()
+
+    if args.load is not None:
+        # 'data/2017-10-24/cam1_2017-10-24_10-12'
+        data = load_data_from_file(args.load)
+        if 'cam' not in data:
+            if args.number is None:
+                raise RuntimeError('Must specify the cam number')
+            data['cam'] = args.number
+        elif args.number is not None:
+            data['cam'] = args.number
+    elif args.calibrate:
+        prefix = args.calibrate
+        print('Connecting to {} line undulator ({}) with prefix {!r}'
+              ''.format(args.line, args.segment, prefix))
+        if args.line == 'hgvpu':
+            motors = setup_hgvpu(prefix=prefix)
+        else:
+            motors = setup_sxu(prefix=prefix)
+        voltage_pv = PV(prefix + args.voltage_pv, auto_monitor=False)
+
         print('Running calibration test...')
-        data = get_calibration_data(motors, 1, velocity=10000.0, dwell=0.01,
+        data = get_calibration_data(motors, args.number,
+                                    velocity=args.velocity, dwell=args.dwell,
                                     voltage_pv=voltage_pv)
         pprint(data)
+        fit_results = fit_data(data)
         write_data(sys.stdout, data)
+    else:
+        print('Must specify either --load or --calibrate', file=sys.stderr)
+        sys.exit(1)
 
-    # data = import_sh_data('data/2017-10-24/cam2_2017-10-24_10-22'); data['cam'] = 2
-    data0 = import_sh_data('data/2017-10-24/cam1_2017-10-24_10-12'); data0['cam'] = 1
-    with open('test.txt', 'wt') as f:
-        write_data(f, data0)
-
-    data1 = import_sh_data('test.txt')
-
-    print('one', repr(data0))
-    print('two', repr(data1))
-    assert repr(data0) == repr(data1)
-
-    data = data0
     fit_results = fit_data(data)
+    if args.save_to:
+        with open(args.save_to, 'wt') as f:
+            write_data(f, data)
 
-    plt.figure(10)
-    compare_fits(data,
-                 labels=['From file', 'Python calculated'],
-                 fit_info_dicts=[data['calibration'], fit_results],
-                 )
-    plt.ioff()
-    plt.show()
+    if args.compare_to:
+        plt.figure(10)
+        label1 = args.load if args.load else 'Calibrated'
+        compare_fits(
+            data,
+            labels=[label1, args.compare_to],
+            fit_info_dicts=[data['calibration'], fit_results],
+        )
+        plt.ioff()
+        plt.show()
