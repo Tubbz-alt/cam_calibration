@@ -545,7 +545,7 @@ if __name__ == '__main__':
                         help='Plot relevant calibration information')
     parser.add_argument('--velocity', type=float, default=1.0,
                         help='Velocity for calibration')
-    parser.add_argument('--voltage-pv', type=str, default='voltage',
+    parser.add_argument('--voltage-pv', type=str, default='EXCTTNADCM',
                         help='Voltage PV suffix')
     parser.add_argument('--compare-to', type=str,
                         help='Compare calibration results with this file')
