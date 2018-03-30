@@ -60,6 +60,7 @@ class CamMotorAndPots(object):
         self.setpoint_pv = self.motor.PV('VAL', auto_monitor=False)
         self.readback_pv = self.motor.PV('DRBV', auto_monitor=False)
         self.velocity_pv = self.motor.PV('VELO', auto_monitor=False)
+        self.torque_enable_pv = self.motor.PV('CNEN', auto_monitor=False)
         self.rotary_pot_pv = PV(self.prefix + info.rotary_pot)
         self.linear_pot_pvs = [
             PV(self.prefix + linear_pot_format.format(pot_number))
@@ -68,7 +69,7 @@ class CamMotorAndPots(object):
 
         self.all_pvs = [self.stop_go_pv, self.stop_pv, self.setpoint_pv,
                         self.readback_pv, self.velocity_pv, self.rotary_pot_pv,
-                        self.calibration_set_pv,
+                        self.torque_enable_pv, self.calibration_set_pv,
                         ] + self.linear_pot_pvs
 
         for pv in self.all_pvs:
@@ -79,9 +80,11 @@ class CamMotorAndPots(object):
         return all(pv.connected for pv in self.all_pvs)
 
     def enable(self):
+        self.torque_enable_pv.put(1, wait=True)
         self.stop_go_pv.put('Go', wait=True)
 
     def disable(self):
+        self.torque_enable_pv.put(0, wait=True)
         self.stop_go_pv.put('Stop', wait=True)
 
     def move(self, pos):
