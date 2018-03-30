@@ -396,6 +396,7 @@ def fit_data(data, line, plot=False):
     yoff = poly_rot(np.asarray(shifted_angles))
 
     if plot:
+        plt.figure(0)
         plt.clf()
         plt.title('Deadband shift')
         plt.plot(angles, rotary_pot, label='input')
@@ -426,6 +427,7 @@ def fit_data(data, line, plot=False):
         plt.plot(linear_pot, 'x', label='Data', lw=1)
         plt.plot(linear_fitted, label='Fitted')
         plt.legend()
+        plt.plot()
 
     linear_offset_rms_fit = np.std(linear_pot - linear_fitted) * 2000.
     rotary_offset = (rotary_pot[0] / avg_voltage) * gain - linear_phase_offset
@@ -636,7 +638,7 @@ if __name__ == '__main__':
                                     velocity=args.velocity, dwell=args.dwell,
                                     voltage_pv=voltage_pv)
         pprint(data)
-        fit_results = fit_data(data, line=args.line)
+        fit_results = fit_data(data, line=args.line, plot=args.plot)
         data['calibration'] = fit_results
         write_data(sys.stdout, data)
 
