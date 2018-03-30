@@ -15,32 +15,7 @@ import scipy.optimize
 import matplotlib.pyplot as plt
 
 
-# Note: linear potentiometers are as follows for the LCLS-I girder:
-# girder potentiometer 1 = LP1-Y (CM1)
-# girder potentiometer 2 = LP2-Y (CM2/CM3)
-# girder potentiometer 3 = LP3-X (CM2/CM3)
-# girder potentiometer 5 = LP5-Y (CM4)
-# girder potentiometer 6 = LP6-Y (CM5)
-# girder potentiometer 7 = LP7-X (CM5)
-
-cam_to_pot_numbers = {
-    1: (1, ),
-    2: (2, 3),
-    3: (2, 3),
-    4: (5, ),
-    5: (6, 7),
-}
-
 AxisInfo = namedtuple('AxisInfo', 'motor rotary_pot linear_pots')
-
-axis_info = OrderedDict(
-    [(cam,
-      AxisInfo(motor='CM{}MOTOR'.format(cam),
-               rotary_pot='CM{}ADCM'.format(cam),
-               linear_pots=cam_to_pot_numbers[cam]))
-     for cam in range(1, 6)
-     ]
-)
 
 
 class PV(epics.PV):
@@ -72,7 +47,7 @@ class CamMotorAndPots(object):
     # Awful OO for my convenience
 
     def __init__(self, prefix, cam_number, linear_pot_format):
-        info = axis_info[cam_number]
+        info = self.axis_info[cam_number]
 
         self.prefix = prefix
         self.cam_number = cam_number
@@ -131,6 +106,54 @@ class CamMotorAndPots(object):
                           prefix=self.prefix,
                           connected=self.connected)
                 )
+
+
+class HXUCamMotorAndPots(CamMotorAndPots):
+    # Note: linear potentiometers are as follows for the LCLS-I girder:
+    # girder potentiometer 1 = LP1-Y (CM1)
+    # girder potentiometer 2 = LP2-Y (CM2/CM3)
+    # girder potentiometer 3 = LP3-X (CM2/CM3)
+    # girder potentiometer 5 = LP5-Y (CM4)
+    # girder potentiometer 6 = LP6-Y (CM5)
+    # girder potentiometer 7 = LP7-X (CM5)
+
+    cam_to_pot_numbers = {
+        1: (1, ),
+        2: (2, 3),
+        3: (2, 3),
+        4: (5, ),
+        5: (6, 7),
+    }
+
+
+HXUCamMotorAndPots.axis_info = OrderedDict(
+    [(cam,
+      AxisInfo(motor='CM{}MOTOR'.format(cam),
+               rotary_pot='CM{}ADCM'.format(cam),
+               linear_pots=HXUCamMotorAndPots.cam_to_pot_numbers[cam]))
+     for cam in range(1, 6)
+     ]
+)
+
+
+class SXUCamMotorAndPots(CamMotorAndPots):
+    cam_to_pot_numbers = {
+        1: ('LV3', ),
+        2: ('LV1', 'LH1'),
+        3: ('LV1', 'LH1'),
+        4: ('LV2', 'LH2'),
+        5: ('LV2', 'LH2'),
+    }
+
+
+SXUCamMotorAndPots.axis_info = OrderedDict(
+    [(cam,
+      AxisInfo(motor='CM{}MOTOR'.format(cam),
+               rotary_pot='CM{}ADCM'.format(cam),
+               linear_pots=SXUCamMotorAndPots.cam_to_pot_numbers[cam]))
+     for cam in range(1, 6)
+     ]
+)
 
 
 def move_through_range(cam, low=0, high=360, step=2):
@@ -322,8 +345,18 @@ def cam_sinusoidal_fit(angles, lin_pot, plot=False):
             lin_pot_fitted)
 
 
-def fit_data(data, plot=False):
+def get_cam_to_pot_numbers(line):
+    'hxr/sxr -> dictionary of cam motor to pot name/number'
+    if line == 'hxr':
+        return HXUCamMotorAndPots.cam_to_pot_numbers
+    elif line == 'sxr':
+        return SXUCamMotorAndPots.cam_to_pot_numbers
+    raise ValueError('Unexpected line: {!r}; should be sxr or hxr', line)
+
+
+def fit_data(data, line, plot=False):
     '''According to appropriate linear potentiometer, fit cam rotary pot'''
+    cam_to_pot_numbers = get_cam_to_pot_numbers(line)
     cam_num = data['cam']
     angles = data['angles']
     rotary_pot = data['rotary']
@@ -378,10 +411,11 @@ def fit_data(data, plot=False):
                 )
 
 
-def compare_fits(data, labels, fit_info_dicts):
+def compare_fits(data, labels, fit_info_dicts, line):
     cam_num = data['cam']
     angles = np.asarray(data['angles'])
     # rotary_pot = data['shifted_rotary']
+    cam_to_pot_numbers = get_cam_to_pot_numbers(line)
     linear_pot = data['linear'][cam_to_pot_numbers[cam_num][0]]
     parameter_comparison = {
         'average_voltage': [],
@@ -417,18 +451,18 @@ def compare_fits(data, labels, fit_info_dicts):
 def setup_hgvpu(prefix='camsim:', linear_pot_format='LP{}ADCM'):
     cams = OrderedDict(
         (cam,
-         CamMotorAndPots(prefix, cam_number=cam,
-                         linear_pot_format=linear_pot_format))
-        for cam in axis_info)
+         HXUCamMotorAndPots(prefix, cam_number=cam,
+                            linear_pot_format=linear_pot_format))
+        for cam in HXUCamMotorAndPots.axis_info)
     return cams
 
 
 def setup_sxu(prefix='camsim:', linear_pot_format='LP{}ADCM'):
     cams = OrderedDict(
         (cam,
-         CamMotorAndPots(prefix, cam_number=cam,
-                         linear_pot_format=linear_pot_format))
-        for cam in axis_info)
+         SXUCamMotorAndPots(prefix, cam_number=cam,
+                            linear_pot_format=linear_pot_format))
+        for cam in HXUCamMotorAndPots.axis_info)
     return cams
 
 
@@ -499,8 +533,8 @@ if __name__ == '__main__':
     parser.add_argument('--save-to', type=str,
                         help='Save calibration data to file')
 
-    parser.add_argument('-l', '--line', type=str, choices=('hgvpu', 'sxu'),
-                        default='hgvpu',
+    parser.add_argument('-l', '--line', type=str, choices=('hxr', 'sxr'),
+                        default='hgvpu', required=True,
                         help='Specify the undulator line')
     parser.add_argument('-s', '--segment', type=str,
                         help='Specify the undulator segment')
@@ -536,10 +570,12 @@ if __name__ == '__main__':
         prefix = args.calibrate
         print('Connecting to {} line undulator ({}) with prefix {!r}'
               ''.format(args.line, args.segment, prefix))
-        if args.line == 'hgvpu':
+        if args.line == 'hxr':
             motors = setup_hgvpu(prefix=prefix)
-        else:
+        elif args.line == 'sxr':
             motors = setup_sxu(prefix=prefix)
+        else:
+            raise ValueError('Unknown line; choose either sxr or hxr')
         voltage_pv = PV(prefix + args.voltage_pv, auto_monitor=False)
 
         print('Running calibration test...')
@@ -547,13 +583,13 @@ if __name__ == '__main__':
                                     velocity=args.velocity, dwell=args.dwell,
                                     voltage_pv=voltage_pv)
         pprint(data)
-        fit_results = fit_data(data)
+        fit_results = fit_data(data, line=args.line)
         write_data(sys.stdout, data)
     else:
         print('Must specify either --load or --calibrate', file=sys.stderr)
         sys.exit(1)
 
-    fit_results = fit_data(data)
+    fit_results = fit_data(data, line=args.line)
     if args.save_to:
         with open(args.save_to, 'wt') as f:
             write_data(f, data)
@@ -565,6 +601,7 @@ if __name__ == '__main__':
             data,
             labels=[label1, args.compare_to],
             fit_info_dicts=[data['calibration'], fit_results],
+            line=args.line,
         )
         plt.ioff()
         plt.show()
