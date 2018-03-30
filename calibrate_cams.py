@@ -63,8 +63,8 @@ class CamMotorAndPots(object):
         self.torque_enable_pv = self.motor.PV('CNEN', auto_monitor=False)
         self.rotary_pot_pv = PV(self.prefix + info.rotary_pot)
         self.linear_pot_pvs = [
-            PV(self.prefix + linear_pot_format.format(pot_number))
-            for pot_number in info.linear_pots
+            PV(self.prefix + linear_pot_format.format(pot_id))
+            for pot_id in info.linear_pots
         ]
 
         self.all_pvs = [self.stop_go_pv, self.stop_pv, self.setpoint_pv,
@@ -120,7 +120,7 @@ class HXUCamMotorAndPots(CamMotorAndPots):
     # girder potentiometer 6 = LP6-Y (CM5)
     # girder potentiometer 7 = LP7-X (CM5)
 
-    cam_to_pot_numbers = {
+    cam_to_linear_pots = {
         1: (1, ),
         2: (2, 3),
         3: (2, 3),
@@ -133,14 +133,14 @@ HXUCamMotorAndPots.axis_info = OrderedDict(
     [(cam,
       AxisInfo(motor='CM{}MOTOR'.format(cam),
                rotary_pot='CM{}ADCM'.format(cam),
-               linear_pots=HXUCamMotorAndPots.cam_to_pot_numbers[cam]))
+               linear_pots=HXUCamMotorAndPots.cam_to_linear_pots[cam]))
      for cam in range(1, 6)
      ]
 )
 
 
 class SXUCamMotorAndPots(CamMotorAndPots):
-    cam_to_pot_numbers = {
+    cam_to_linear_pots = {
         1: ('LV3', ),
         2: ('LV1', 'LH1'),
         3: ('LV1', 'LH1'),
@@ -153,7 +153,7 @@ SXUCamMotorAndPots.axis_info = OrderedDict(
     [(cam,
       AxisInfo(motor='CM{}MOTOR'.format(cam),
                rotary_pot='CM{}ADCM'.format(cam),
-               linear_pots=SXUCamMotorAndPots.cam_to_pot_numbers[cam]))
+               linear_pots=SXUCamMotorAndPots.cam_to_linear_pots[cam]))
      for cam in range(1, 6)
      ]
 )
@@ -180,8 +180,8 @@ def get_all_linear_pots(cams):
     pots = {}
 
     for cam_num, cam in cams.items():
-        for pot_num, pv in zip(cam.info.linear_pots, cam.linear_pot_pvs):
-            pots[pot_num] = pv
+        for pot_id, pv in zip(cam.info.linear_pots, cam.linear_pot_pvs):
+            pots[pot_id] = pv
 
     return pots
 
@@ -274,8 +274,8 @@ def get_calibration_data(cams, cam_num, velocity, dwell,
         data['rotary'].append(motor.rotary_pot_pv.get())
         data['voltages'].append(voltage_pv.get())
 
-        for pot_num, linear_pot_pv in all_linear_pots.items():
-            data['linear'][pot_num].append(linear_pot_pv.get())
+        for pot_id, linear_pot_pv in all_linear_pots.items():
+            data['linear'][pot_id].append(linear_pot_pv.get())
 
     motor.move(360.0)
     motor.calibrate(0.0)
@@ -352,22 +352,22 @@ def cam_sinusoidal_fit(angles, lin_pot, plot=False):
             lin_pot_fitted)
 
 
-def get_cam_to_pot_numbers(line):
+def get_cam_to_linear_pots(line):
     'hxr/sxr -> dictionary of cam motor to pot name/number'
     if line == 'hxr':
-        return HXUCamMotorAndPots.cam_to_pot_numbers
+        return HXUCamMotorAndPots.cam_to_linear_pots
     elif line == 'sxr':
-        return SXUCamMotorAndPots.cam_to_pot_numbers
+        return SXUCamMotorAndPots.cam_to_linear_pots
     raise ValueError('Unexpected line: {!r}; should be sxr or hxr', line)
 
 
 def fit_data(data, line, plot=False):
     '''According to appropriate linear potentiometer, fit cam rotary pot'''
-    cam_to_pot_numbers = get_cam_to_pot_numbers(line)
+    cam_to_linear_pots = get_cam_to_linear_pots(line)
     cam_num = data['cam']
     angles = data['angles']
     rotary_pot = data['rotary']
-    linear_pots = [data['linear'][num] for num in cam_to_pot_numbers[cam_num]]
+    linear_pots = [data['linear'][num] for num in cam_to_linear_pots[cam_num]]
 
     shifted_angles, shifted_rotary_pot = shift_for_polyfit(angles, rotary_pot)
     data['shifted_rotary'] = shifted_rotary_pot
@@ -422,8 +422,8 @@ def compare_fits(data, labels, fit_info_dicts, line):
     cam_num = data['cam']
     angles = np.asarray(data['angles'])
     # rotary_pot = data['shifted_rotary']
-    cam_to_pot_numbers = get_cam_to_pot_numbers(line)
-    linear_pot = data['linear'][cam_to_pot_numbers[cam_num][0]]
+    cam_to_linear_pots = get_cam_to_linear_pots(line)
+    linear_pot = data['linear'][cam_to_linear_pots[cam_num][0]]
     parameter_comparison = {
         'average_voltage': [],
         'gain': [],
