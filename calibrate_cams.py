@@ -602,7 +602,7 @@ if __name__ == '__main__':
         data['calibration'] = fit_results
         write_data(sys.stdout, data)
 
-    fit_results = fit_data(data, line=args.line)
+    fit_results = fit_data(data, line=args.line, plot=args.plot)
     if args.save_to:
         with open(args.save_to, 'wt') as f:
             write_data(f, data)
@@ -616,5 +616,8 @@ if __name__ == '__main__':
             fit_info_dicts=[data['calibration'], fit_results],
             line=args.line,
         )
+
+    if args.plot or args.compare_to:
         plt.ioff()
+        print('(See plot)', file=sys.stderr)
         plt.show()
