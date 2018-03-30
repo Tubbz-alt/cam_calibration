@@ -53,7 +53,12 @@ class CamMotorAndPots(object):
         self.cam_number = cam_number
         self.info = info
 
-        self.motor = epics.Motor(self.prefix + info.motor)
+        try:
+            self.motor = epics.Motor(self.prefix + info.motor)
+        except TimeoutError:
+            raise TimeoutError('Failed to connect to: {}'
+                               ''.format(self.prefix + info.motor))
+
         self.stop_go_pv = self.motor.PV('SPMG', auto_monitor=False)
         self.stop_pv = self.motor.PV('STOP', auto_monitor=False)
         self.calibration_set_pv = self.motor.PV('SET', auto_monitor=False)
@@ -591,7 +596,25 @@ if __name__ == '__main__':
             motors = setup_sxu(prefix=prefix)
         else:
             raise ValueError('Unknown line; choose either sxr or hxr')
+
         voltage_pv = PV(prefix + args.voltage_pv, auto_monitor=False)
+
+        if args.verbose:
+            def print_connected(pv):
+                print('{}\t{}' ''.format(pv.pvname, 'connected'
+                                         if pv.connected
+                                         else 'disconnected'),
+                      file=sys.stderr)
+
+            for num, motor in motors.items():
+                print('-- cam {} / {} --'.format(num, motor), file=sys.stderr)
+                for pv in motor.all_pvs:
+                    print_connected(pv)
+                print(file=sys.stderr)
+                print(file=sys.stderr)
+
+            voltage_pv.wait_for_connection()
+            print_connected(voltage_pv)
 
         print('Running calibration test...')
         data = get_calibration_data(motors, args.number,
