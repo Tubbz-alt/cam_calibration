@@ -219,6 +219,7 @@ def load_data_from_file(fn):
                 else:
                     linear_idx = int(name[-1])
                     data['linear'][linear_idx] = values
+                    # TODO: SXR loading based on linear_pot_map below
                 print(name, len(values))
         else:
             if line.startswith('# '):
@@ -485,6 +486,13 @@ def write_data(f, data, segment='UND1:150', precision=5):
          (5, 'CALGDRPOT5'),
          (6, 'CALGDRPOT6'),
          (7, 'CALGDRPOT7'),
+
+         ('LV3', 'CALGDRPOT1'),
+         ('LV1', 'CALGDRPOT2'),
+         ('LH1', 'CALGDRPOT3'),
+         ('LV2', 'CALGDRPOT5'),
+         ('LV2', 'CALGDRPOT6'),
+         ('LH2', 'CALGDRPOT7'),
          ]
     )
 
@@ -509,7 +517,8 @@ def write_data(f, data, segment='UND1:150', precision=5):
             write_array(f, write_name, value)
 
     for pot_idx, write_name in linear_pot_map.items():
-        write_array(f, write_name, data['linear'][pot_idx])
+        if pot_idx in data['linear']:
+            write_array(f, write_name, data['linear'][pot_idx])
 
     print('', file=f)
     print('Summary:', file=f)
@@ -587,6 +596,7 @@ if __name__ == '__main__':
                                     voltage_pv=voltage_pv)
         pprint(data)
         fit_results = fit_data(data, line=args.line)
+        data['calibration'] = fit_results
         write_data(sys.stdout, data)
 
     fit_results = fit_data(data, line=args.line)
