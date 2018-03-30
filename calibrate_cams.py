@@ -277,6 +277,9 @@ def get_calibration_data(cams, cam_num, velocity, dwell,
         for pot_num, linear_pot_pv in all_linear_pots.items():
             data['linear'][pot_num].append(linear_pot_pv.get())
 
+    motor.move(360.0)
+    motor.calibrate(0.0)
+
     return data
 
 
