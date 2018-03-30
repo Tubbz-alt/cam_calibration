@@ -25,20 +25,6 @@ class PV(epics.PV):
             raise TimeoutError('Timed out while reading value')
         return value
 
-    def get_several(self, num_readings, delay, **kw):
-        'Return several readings'
-        values = []
-        for i in range(num_readings):
-            values.append(self.get(**kw))
-            time.sleep(delay)
-
-        return values
-
-    def get_averaged(self, num_readings, delay, **kw):
-        'Get several readings, return average'
-        values = self.get_several(num_readings, delay, **kw)
-        return sum(values) / len(values)
-
 
 epics.pv.PV = PV
 
@@ -97,7 +83,7 @@ class CamMotorAndPots(object):
         if ret != 0:
             raise epics.motor.MotorException('Move failed: ret={}'.format(ret))
 
-    def calibrate(self, position):
+    def calibrate_motor(self, position):
         assert self.connected
 
         self.stop_pv.put(1, wait=True)
@@ -262,7 +248,7 @@ def get_calibration_data(cams, cam_num, velocity, dwell,
 
     motor = cams[cam_num]
     motor.enable()
-    motor.calibrate(0.0)
+    motor.calibrate_motor(0.0)
     motor.velocity_pv.put(velocity, wait=True)
 
     data = {'cam': cam_num,
@@ -283,7 +269,7 @@ def get_calibration_data(cams, cam_num, velocity, dwell,
             data['linear'][pot_id].append(linear_pot_pv.get())
 
     motor.move(360.0)
-    motor.calibrate(0.0)
+    motor.calibrate_motor(0.0)
 
     return data
 
