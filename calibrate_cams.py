@@ -169,6 +169,9 @@ def move_through_range(cam, low=0, high=360, step=2):
 def check_connected(cams):
     for num, cam in cams.items():
         if not cam.connected:
+            for pv in cam.all_pvs:
+                if not pv.connected:
+                    print('PV {} is not connected'.format(pv), file=sys.stderr)
             raise RuntimeError('All cams are not connected')
 
 
@@ -521,7 +524,7 @@ if __name__ == '__main__':
     import argparse
 
     parser = argparse.ArgumentParser()
-    commands = parser.add_mutually_exclusive_group()
+    commands = parser.add_mutually_exclusive_group(required=True)
     commands.add_argument('--calibrate', type=str,
                           help='Calibrate motors with the given EPICS prefix')
     commands.add_argument('--load', type=str,
@@ -585,9 +588,6 @@ if __name__ == '__main__':
         pprint(data)
         fit_results = fit_data(data, line=args.line)
         write_data(sys.stdout, data)
-    else:
-        print('Must specify either --load or --calibrate', file=sys.stderr)
-        sys.exit(1)
 
     fit_results = fit_data(data, line=args.line)
     if args.save_to:
