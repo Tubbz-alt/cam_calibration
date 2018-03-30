@@ -320,15 +320,12 @@ def cam_sinusoidal_fit(angles, lin_pot, plot=False):
 
     if plot:
         plt.figure(0)
-        iter_ = 0
 
     def optimize_me(p):
         amp, freq, phase, offset = p
         opt = sinusoid(angles, amp, freq, phase, offset)
         if plot:
-            nonlocal iter_
-            iter_ += 1
-            plt.plot(opt, label='iteration {}'.format(iter_))
+            plt.plot(opt)
         return np.sum((opt - lin_pot) ** 2)
 
     res = scipy.optimize.minimize(optimize_me, x0=guess, tol=0.0000001,
