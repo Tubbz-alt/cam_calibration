@@ -460,7 +460,7 @@ def setup_hgvpu(prefix='camsim:', linear_pot_format='LP{}ADCM'):
     return cams
 
 
-def setup_sxu(prefix='camsim:', linear_pot_format='LP{}ADCM'):
+def setup_sxu(prefix='camsim:', linear_pot_format='{}ADCM'):
     cams = OrderedDict(
         (cam,
          SXUCamMotorAndPots(prefix, cam_number=cam,
