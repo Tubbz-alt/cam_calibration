@@ -150,6 +150,10 @@ SXUCamMotorAndPots.axis_info = OrderedDict(
 )
 
 
+line_to_class = {'hxr': HXUCamMotorAndPots,
+                 'sxr': SXUCamMotorAndPots
+                 }
+
 def move_through_range(cam, low=0, high=360, step=2):
     'Move a motor through its range, yielding at each position'
     for pos in range(low, high, step):
@@ -177,7 +181,7 @@ def get_all_linear_pots(cams):
     return pots
 
 
-def load_data_from_file(fn):
+def load_data_from_file(fn, line):
     'Import a shell script which stores cam calibration data'
     with open(fn, 'rt') as f:
         lines = [line.strip() for line in f.readlines()]
@@ -190,6 +194,29 @@ def load_data_from_file(fn):
         'rotaryPotOffset': 'rotary_pot_offset',
         'linear_offset': 'linear_phase_offset',
     }
+
+
+    # TODO make generic
+    if line == 'sxr':
+        linear_map = dict(
+            [(1, 'LV3'),
+             (2, 'LV1'),
+             (3, 'LH1'),
+             (5, 'LV2'),
+             (6, 'LV2'),
+             (7, 'LH2'),
+             ]
+        )
+    else:
+        linear_map = dict(
+            [(1, 1),
+             (2, 2),
+             (3, 3),
+             (5, 5),
+             (6, 6),
+             (7, 7),
+             ]
+        )
 
     for line in lines:
         line = line.strip()
@@ -208,9 +235,9 @@ def load_data_from_file(fn):
                 elif name == 'CALCAMPOT':
                     data['rotary'] = values
                 else:
-                    linear_idx = int(name[-1])
-                    data['linear'][linear_idx] = values
-                    # TODO: SXR loading based on linear_pot_map below
+                    idx = int(name[-1])
+                    linear_id = linear_map[idx]
+                    data['linear'][linear_id] = values
                 print(name, len(values))
         else:
             if line.startswith('# '):
@@ -345,19 +372,21 @@ def cam_sinusoidal_fit(angles, lin_pot, plot=False):
 
 def get_cam_to_linear_pots(line):
     'hxr/sxr -> dictionary of cam motor to pot name/number'
-    if line == 'hxr':
-        return HXUCamMotorAndPots.cam_to_linear_pots
-    elif line == 'sxr':
-        return SXUCamMotorAndPots.cam_to_linear_pots
-    raise ValueError('Unexpected line: {!r}; should be sxr or hxr', line)
+    try:
+        cls = line_to_class[line]
+    except KeyError:
+        raise ValueError('Unexpected line: {!r}; should be sxr or hxr', line)
+
+    return cls.cam_to_linear_pots
 
 
 def fit_data(data, line, plot=False):
     '''According to appropriate linear potentiometer, fit cam rotary pot'''
-    cam_to_linear_pots = get_cam_to_linear_pots(line)
     cam_num = data['cam']
     angles = data['angles']
     rotary_pot = data['rotary']
+
+    cam_to_linear_pots = get_cam_to_linear_pots(line)
     linear_pots = [data['linear'][num] for num in cam_to_linear_pots[cam_num]]
 
     shifted_angles, shifted_rotary_pot = shift_for_polyfit(angles, rotary_pot)
@@ -565,7 +594,7 @@ if __name__ == '__main__':
 
     if args.load is not None:
         # 'data/2017-10-24/cam1_2017-10-24_10-12'
-        data = load_data_from_file(args.load)
+        data = load_data_from_file(args.load, line=args.line)
         if 'cam' not in data:
             if args.number is None:
                 raise RuntimeError('Must specify the cam number')
