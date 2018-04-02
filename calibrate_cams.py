@@ -184,7 +184,7 @@ def get_all_linear_pots(cams):
 def load_data_from_file(fn, line):
     'Import a shell script which stores cam calibration data'
     with open(fn, 'rt') as f:
-        lines = [line.strip() for line in f.readlines()]
+        lines = [lin.strip() for lin in f.readlines()]
 
     data = {'linear': {},
             'calibration': {}}
