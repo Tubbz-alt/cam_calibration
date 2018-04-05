@@ -131,12 +131,13 @@ HXUCamMotorAndPots.axis_info = OrderedDict(
 
 
 class SXUCamMotorAndPots(CamMotorAndPots):
+    # even horizontal, odd vertical
     cam_to_linear_pots = {
-        1: ('LV3', ),
-        2: ('LV1', 'LH1'),
-        3: ('LV1', 'LH1'),
-        4: ('LV2', 'LH2'),
-        5: ('LV2', 'LH2'),
+        1: ('LP3', ),
+        2: ('LP1', 'LP2'),
+        3: ('LP1', 'LP2'),
+        4: ('LP5', 'LP4'),
+        5: ('LP5', 'LP4'),
     }
 
 
@@ -199,12 +200,12 @@ def load_data_from_file(fn, line):
     # TODO make generic
     if line == 'sxr':
         linear_map = dict(
-            [(1, 'LV3'),
-             (2, 'LV1'),
-             (3, 'LH1'),
-             (5, 'LV2'),
-             (6, 'LV2'),
-             (7, 'LH2'),
+            [(1, 'LP3'),
+             (2, 'LP1'),
+             (3, 'LP2'),
+             (5, 'LP5'),
+             (6, 'LP5'),
+             (7, 'LP4'),
              ]
         )
     else:
@@ -512,12 +513,12 @@ def write_data(f, data, segment='UND1:150', precision=5):
          (6, 'CALGDRPOT6'),
          (7, 'CALGDRPOT7'),
 
-         ('LV3', 'CALGDRPOT1'),
-         ('LV1', 'CALGDRPOT2'),
-         ('LH1', 'CALGDRPOT3'),
-         ('LV2', 'CALGDRPOT5'),
-         ('LV2', 'CALGDRPOT6'),
-         ('LH2', 'CALGDRPOT7'),
+         ('LP3', 'CALGDRPOT1'),
+         ('LP1', 'CALGDRPOT2'),
+         ('LP2', 'CALGDRPOT3'),
+         ('LP5', 'CALGDRPOT5'),
+         ('LP5', 'CALGDRPOT6'),
+         ('LP4', 'CALGDRPOT7'),
          ]
     )
 
