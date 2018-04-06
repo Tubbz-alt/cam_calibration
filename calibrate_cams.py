@@ -97,6 +97,13 @@ class CamMotorAndPots(object):
         self.torque_enable_pv.put(0, wait=True)
         self.stop_go_pv.put('Stop', wait=True)
 
+    def normal_mode(self):
+        # In normal operation, we won't be poking single motors at a time, and
+        # it's the responsibility of a higher level to enable torque when
+        # starting motion.
+        self.torque_enable_pv.put(0, wait=True)
+        self.stop_go_pv.put('Go', wait=True)
+
     def move(self, pos):
         ret = self.motor.move(val=pos, wait=True)
         if ret != 0:
@@ -352,6 +359,13 @@ def get_calibration_data(cams, cam_num, velocity, dwell, voltage_pv,
                   ''.format(orig_llm, orig_hlm))
         motor.llm_pv.put(orig_llm, wait=True)
         motor.hlm_pv.put(orig_hlm, wait=True)
+
+        if verbose:
+            print('Setting cam motors back to normal operation mode')
+
+        motor.normal_mode()
+        for other in other_cams:
+            other.normal_mode()
 
     return data
 
@@ -741,7 +755,7 @@ if __name__ == '__main__':
             voltage_pv.wait_for_connection()
             print_connected(voltage_pv)
 
-        print('Running calibration test...')
+        print('Running calibration test on cam {}...'.format(args.number))
         data = get_calibration_data(motors, args.number,
                                     velocity=args.velocity, dwell=args.dwell,
                                     voltage_pv=voltage_pv,
