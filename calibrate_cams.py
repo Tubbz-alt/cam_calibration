@@ -758,8 +758,9 @@ if __name__ == '__main__':
                        serial=args.serial)
     else:
         timestamp = datetime.datetime.now().strftime('%Y%m%d_%H%M%S')
-        fn = os.path.join('{}_{}_{}.txt'.format(args.serial, data['cam'],
-                                                timestamp))
+        fn = os.path.join('data',
+                          '{}_cam{}_{}.txt'.format(args.serial, data['cam'],
+                                                   timestamp))
         try:
             os.makedirs('data')
         except Exception:
