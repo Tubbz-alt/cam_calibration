@@ -518,55 +518,32 @@ def fit_data(data, line, plot=False, verbose=False):
     linear_phase_offset = fit_result['phase']
 
     if plot:
-        plt.ion()
+        def shift_180(d):
+            return np.roll(d, len(d) // 2)
+
         plt.figure(cam_num)
         plt.clf()
-        plt.title('Cam {}'.format(data['cam']))
+        ax = plt.gca()
+        plt.title('Cam {} Shifted values'.format(data['cam']))
         plt.xlabel('Angle [deg]')
         plt.ylabel('Linear potentiometer [V]')
-        plt.plot(angles, linear_pot, 'x',
-                 label='Calibration pot ({})'.format(linear_pot_number), lw=1)
-        plt.plot(angles, linear_fitted, label='Fitted calibration pot')
+        angles = np.asarray(angles) - 180
+        ax.plot(angles, shift_180(linear_pot), 'x',
+                label='Calibration pot ({})'.format(linear_pot_number), lw=1)
+        ax.plot(angles, shift_180(linear_fitted),
+                label='Fitted calibration pot')
 
         if verbose:
             for pot, pot_values in data['linear'].items():
                 if pot != linear_pot_number:
-                    plt.plot(angles, pot_values,
-                             label='Calibration pot ({})'.format(pot),
-                             lw=0.5)
+                    ax.plot(angles, shift_180(pot_values),
+                            label='Calibration pot ({})'.format(pot),
+                            lw=0.5)
 
-        ax = plt.gca()
         twin_ax = ax.twinx()
         twin_ax.set_ylabel('Rotary potentiometer [V]')
-        # twin_ax.plot(angles[:len(shifted_rotary_pot)], shifted_rotary_pot)
-        twin_ax.plot(angles, rotary_pot)
+        twin_ax.plot(angles, shift_180(rotary_pot))
         twin_legend(ax, twin_ax)
-
-        if verbose:
-            def shift_180(d):
-                return np.roll(d, len(d) // 2)
-
-            plt.figure(10 + cam_num)
-            plt.clf()
-            ax = plt.gca()
-            plt.title('Cam {} Shifted values'.format(data['cam']))
-            plt.xlabel('Angle [deg]')
-            plt.ylabel('Linear potentiometer [V]')
-            ax.plot(shift_180(linear_pot), 'x',
-                    label='Calibration pot ({})'.format(linear_pot_number), lw=1)
-            ax.plot(shift_180(linear_fitted), label='Fitted calibration pot')
-
-            if verbose:
-                for pot, pot_values in data['linear'].items():
-                    if pot != linear_pot_number:
-                        ax.plot(shift_180(pot_values),
-                                label='Calibration pot ({})'.format(pot),
-                                lw=0.5)
-
-            twin_ax = ax.twinx()
-            twin_ax.set_ylabel('Rotary potentiometer [V]')
-            twin_ax.plot(shift_180(rotary_pot))
-            twin_legend(ax, twin_ax)
 
         plt.plot()
 
@@ -615,7 +592,6 @@ def compare_fits(data, labels, fit_info_dicts, line):
         print(key.ljust(30, ' '), vstr)
 
     plt.legend()
-    plt.show()
 
 
 def setup_hgvpu(prefix='camsim:', linear_pot_format='LP{}ADCM'):
