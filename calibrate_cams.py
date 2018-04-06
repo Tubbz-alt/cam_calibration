@@ -10,6 +10,7 @@ import datetime
 import numpy as np
 
 from collections import OrderedDict, namedtuple
+from contextlib import contextmanager
 
 from numpy import deg2rad, rad2deg, sin, cos
 import scipy.optimize
@@ -26,7 +27,28 @@ import matplotlib.pyplot as plt
 voltage_suffix = 'EXCTTNADCM'
 AxisInfo = namedtuple('AxisInfo',
                       'motor rotary_pot rotary_pot_gain rotary_pot_offset '
-                      'linear_pots')
+                      'rotary_pot_calibrated linear_pots')
+
+
+def set_soft_limits(cam, low_limit, high_limit, verbose=False):
+    orig_llm = motor.llm_pv.get()
+    orig_hlm = motor.hlm_pv.get()
+
+    if verbose:
+        print('Setting low limit to {}, high limit to {}'
+              ''.format(low_limit, high_limit))
+
+    cam.llm_pv.put(low_limit, wait=True)
+    cam.hlm_pv.put(high_limit, wait=True)
+
+    yield
+
+    if verbose:
+        print('Resetting low limit to {}, high limit to {}'
+              ''.format(orig_llm, orig_hlm))
+
+    cam.llm_pv.put(orig_llm, wait=True)
+    cam.hlm_pv.put(orig_hlm, wait=True)
 
 
 class PV(epics.PV):
@@ -66,7 +88,8 @@ class CamMotorAndPots(object):
         self.velocity_pv = self.motor.PV('VELO', auto_monitor=False)
         self.max_velocity_pv = self.motor.PV('VMAX', auto_monitor=False)
         self.torque_enable_pv = self.motor.PV('CNEN', auto_monitor=False)
-        self.rotary_pot_pv = PV(self.prefix + info.rotary_pot)
+        self.rotary_pot_pv = PV(self.prefix + info.rotary_pot_adc)
+        self.calibrated_readback_pv = PV(self.prefix + info.rotary_pot_calibrated)
         self.rotary_pot_gain_pv = PV(self.prefix + info.rotary_pot_gain)
         self.rotary_pot_offset_pv = PV(self.prefix + info.rotary_pot_offset)
 
@@ -79,7 +102,7 @@ class CamMotorAndPots(object):
                         self.llm_pv, self.hlm_pv, self.readback_pv,
                         self.velocity_pv, self.max_velocity_pv,
                         self.rotary_pot_pv, self.torque_enable_pv,
-                        self.calibration_set_pv,
+                        self.calibration_set_pv, self.calibrated_readback_pv,
                         ] + self.linear_pot_pvs
 
         for pv in self.all_pvs:
@@ -109,15 +132,16 @@ class CamMotorAndPots(object):
         if ret != 0:
             raise epics.motor.MotorException('Move failed: ret={}'.format(ret))
 
-    def calibrate_motor(self, position):
+    def calibrate_motor(self, position, verbose=False):
         assert self.connected
 
-        self.stop_pv.put(1, wait=True)
-        try:
-            self.calibration_set_pv.put(1, wait=True)
-            self.setpoint_pv.put(position, wait=True)
-        finally:
-            self.calibration_set_pv.put(0, wait=True)
+        with set_soft_limits(self, -360, 360, verbose=verbose):
+            self.stop_pv.put(1, wait=True)
+            try:
+                self.calibration_set_pv.put(1, wait=True)
+                self.setpoint_pv.put(position, wait=True)
+            finally:
+                self.calibration_set_pv.put(0, wait=True)
 
     def calibrate_rotary_pot(self, gain, offset):
         self.rotary_pot_gain_pv.put(gain, wait=True)
@@ -154,6 +178,7 @@ HXUCamMotorAndPots.axis_info = OrderedDict(
     [(cam,
       AxisInfo(motor='CM{}MOTOR'.format(cam),
                rotary_pot='CM{}ADCM'.format(cam),
+               rotary_pot_calibrated='CM{}READDEG'.format(cam),
                rotary_pot_gain='CM{}GAINC'.format(cam),
                rotary_pot_offset='CM{}OFFSETC'.format(cam),
                linear_pots=HXUCamMotorAndPots.cam_to_linear_pots[cam]))
@@ -177,6 +202,7 @@ SXUCamMotorAndPots.axis_info = OrderedDict(
     [(cam,
       AxisInfo(motor='CM{}MOTOR'.format(cam),
                rotary_pot='CM{}ADCM'.format(cam),
+               rotary_pot_calibrated='CM{}READDEG'.format(cam),
                rotary_pot_gain='CM{}GAINC'.format(cam),
                rotary_pot_offset='CM{}OFFSETC'.format(cam),
                linear_pots=SXUCamMotorAndPots.cam_to_linear_pots[cam]))
@@ -331,34 +357,28 @@ def get_calibration_data(cams, cam_num, velocity, dwell, voltage_pv,
         motor.max_velocity_pv.put(velocity, wait=True)
         motor.velocity_pv.put(velocity, wait=True)
         # extend soft limits
-        motor.llm_pv.put(-2)
-        motor.hlm_pv.put(362)
 
-        for pos in move_through_range(motor, 0, 360, 2):
-            time.sleep(dwell)
-            data['angles'].append(pos)
-            data['rotary'].append(motor.rotary_pot_pv.get())
-            data['voltages'].append(voltage_pv.get())
+        with set_soft_limit(self, -2, 362, verbose=verbose):
+            for pos in move_through_range(motor, 0, 360, 2):
+                time.sleep(dwell)
+                data['angles'].append(pos)
+                data['rotary'].append(motor.rotary_pot_pv.get())
+                data['voltages'].append(voltage_pv.get())
 
-            for pot_id, linear_pot_pv in all_linear_pots.items():
-                data['linear'][pot_id].append(linear_pot_pv.get())
+                for pot_id, linear_pot_pv in all_linear_pots.items():
+                    data['linear'][pot_id].append(linear_pot_pv.get())
+
+            if verbose:
+                print('Moving motor to 360 and setting position as 0 degrees')
+
+            motor.move(360.0)
+            motor.calibrate_motor(0.0)
     finally:
-        if verbose:
-            print('Moving motor to 360 and setting position as 0 degrees')
-        motor.move(360.0)
-        motor.calibrate_motor(0.0)
-
         if verbose:
             print('Resetting velocity to {}, max velocity to {}'
                   ''.format(orig_velocity, orig_max_velocity))
         motor.max_velocity_pv.put(orig_max_velocity, wait=True)
         motor.velocity_pv.put(orig_velocity, wait=True)
-
-        if verbose:
-            print('Resetting low limit to {}, high limit to {}'
-                  ''.format(orig_llm, orig_hlm))
-        motor.llm_pv.put(orig_llm, wait=True)
-        motor.hlm_pv.put(orig_hlm, wait=True)
 
         if verbose:
             print('Setting cam motors back to normal operation mode')
@@ -798,6 +818,12 @@ if __name__ == '__main__':
         cam = motors[args.number]
         cam.calibrate_rotary_pot(fit_results['gain'],
                                  fit_results['rotary_pot_offset'])
+
+        calibrated_position = cam.calibrated_readback_pv.get()
+        if args.verbose:
+            print('Setting motor to calibrated position: {}'
+                  ''.format(calibrated_position))
+        motor.calibrate_motor(calibrated_position, verbose=args.verbose)
 
     if args.compare_to:
         plt.figure(10)
