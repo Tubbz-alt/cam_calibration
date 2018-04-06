@@ -776,7 +776,8 @@ if __name__ == '__main__':
             print('Saved results to {}'.format(fn))
 
     if args.verbose:
-        write_data(sys.stdout, data, prefix=data['prefix'], line=args.line)
+        write_data(sys.stdout, data, prefix=data['prefix'], line=args.line,
+                   serial=args.serial)
 
     if args.store_to_pv:
         cam = motors[args.number]
