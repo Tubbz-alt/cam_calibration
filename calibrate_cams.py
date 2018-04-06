@@ -250,7 +250,7 @@ def load_data_from_file(fn, line):
         line = line.strip()
         if not line:
             continue
-        elif line.startswith('caput') or line.startswith('USEG'):
+        elif line.startswith('caput') or ':CAL' in line:
             data['prefix'] = line[:line.index('CAL')]
             line = line[line.index('CAL'):]
             items = [item for item in line.split(' ') if item]
