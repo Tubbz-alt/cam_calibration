@@ -618,26 +618,24 @@ if __name__ == '__main__':
     commands.add_argument('--load', type=str,
                           help='Load calibration data from file')
 
-    parser.add_argument('--store',
+    parser.add_argument('--store-to-pv',
                         action='store_true',
                         help='Store calibration data on motor')
     parser.add_argument('--save-to', type=str,
                         help='Save calibration data to file')
 
-    parser.add_argument('-l', '--line', type=str, choices=('hxr', 'sxr'),
+    parser.add_argument('--line', '-l', type=str, choices=('hxr', 'sxr'),
                         default='hgvpu', required=True,
                         help='Specify the undulator line')
-    parser.add_argument('-s', '--segment', type=str,
+    parser.add_argument('--segment', '-s', type=str,
                         help='Specify the undulator segment')
-    parser.add_argument('-n', '--number', type=int,
+    parser.add_argument('--number', '-n', type=int,
                         help='Specify the cam positioner number')
-    parser.add_argument('-p', '--plot',
+    parser.add_argument('--plot', '-p',
                         action='store_true',
                         help='Plot relevant calibration information')
     parser.add_argument('--velocity', type=float, default=1.0,
                         help='Velocity for calibration')
-    parser.add_argument('--voltage-pv', type=str, default='EXCTTNADCM',
-                        help='Voltage PV suffix')
     parser.add_argument('--compare-to', type=str,
                         help='Compare calibration results with this file')
     parser.add_argument('--dwell',
