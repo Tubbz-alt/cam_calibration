@@ -524,7 +524,7 @@ def fit_data(data, line, plot=False, verbose=False):
         plt.figure(cam_num)
         plt.clf()
         ax = plt.gca()
-        plt.title('Cam {} Shifted values'.format(data['cam']))
+        plt.title('Cam {} Calibration'.format(data['cam']))
         plt.xlabel('Angle [deg]')
         plt.ylabel('Linear potentiometer [V]')
         angles = np.asarray(angles) - 180
@@ -766,7 +766,8 @@ if __name__ == '__main__':
         with open(args.save_to, 'wt') as f:
             write_data(f, data, prefix=data['prefix'], line=args.line,
                        serial=args.serial)
-    else:
+        plt.savefig('{}.pdf'.format(args.save_to))
+    elif args.calibrate:
         timestamp = datetime.datetime.now().strftime('%Y%m%d_%H%M%S')
         fn = os.path.join('data',
                           '{}_cam{}_{}.txt'.format(args.serial, data['cam'],
@@ -784,6 +785,8 @@ if __name__ == '__main__':
             print('Failed to save results to {}: {} {}'
                   ''.format(fn, type(ex).__name__, ex))
         else:
+            plt.figure(data['cam'])
+            plt.savefig('{}.pdf'.format(fn))
             print('Saved results to {}'.format(fn))
 
     if args.verbose:
