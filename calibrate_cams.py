@@ -62,9 +62,10 @@ class CamMotorAndPots(object):
         ]
 
         self.all_pvs = [self.stop_go_pv, self.stop_pv, self.setpoint_pv,
-                        self.llm_pv, self.hlm_pv, self.readback_pv, 
-                        self.velocity_pv, self.max_velocity_pv, self.rotary_pot_pv,
-                        self.torque_enable_pv, self.calibration_set_pv,
+                        self.llm_pv, self.hlm_pv, self.readback_pv,
+                        self.velocity_pv, self.max_velocity_pv,
+                        self.rotary_pot_pv, self.torque_enable_pv,
+                        self.calibration_set_pv,
                         ] + self.linear_pot_pvs
 
         for pv in self.all_pvs:
@@ -159,6 +160,7 @@ line_to_class = {'hxr': HXUCamMotorAndPots,
                  'sxr': SXUCamMotorAndPots
                  }
 
+
 def move_through_range(cam, low=0, high=360, step=2):
     'Move a motor through its range, yielding at each position'
     for pos in range(low, high, step):
@@ -199,7 +201,6 @@ def load_data_from_file(fn, line):
         'rotaryPotOffset': 'rotary_pot_offset',
         'linear_offset': 'linear_phase_offset',
     }
-
 
     # TODO make generic
     if line == 'sxr':
@@ -279,17 +280,10 @@ def get_calibration_data(cams, cam_num, velocity, dwell,
         other.disable()
 
     motor = cams[cam_num]
-    motor.enable()
-    motor.calibrate_motor(0.0)
     orig_max_velocity = motor.max_velocity_pv.get()
     orig_velocity = motor.velocity_pv.get()
-    motor.max_velocity_pv.put(velocity, wait=True)
-    motor.velocity_pv.put(velocity, wait=True)
-    # extend soft limits
     orig_llm = motor.llm_pv.get()
     orig_hlm = motor.hlm_pv.get()
-    motor.llm_pv.put(-2)
-    motor.hlm_pv.put(362)
 
     data = {'cam': cam_num,
             'angles': [],
@@ -299,22 +293,33 @@ def get_calibration_data(cams, cam_num, velocity, dwell,
             'calibration': {},
             }
 
-    for pos in move_through_range(motor, 0, 360, 2):
-        time.sleep(dwell)
-        data['angles'].append(pos)
-        data['rotary'].append(motor.rotary_pot_pv.get())
-        data['voltages'].append(voltage_pv.get())
+    try:
+        motor.enable()
+        motor.calibrate_motor(0.0)
+        motor.max_velocity_pv.put(velocity, wait=True)
+        motor.velocity_pv.put(velocity, wait=True)
+        # extend soft limits
+        motor.llm_pv.put(-2)
+        motor.hlm_pv.put(362)
 
-        for pot_id, linear_pot_pv in all_linear_pots.items():
-            data['linear'][pot_id].append(linear_pot_pv.get())
+        for pos in move_through_range(motor, 0, 360, 2):
+            time.sleep(dwell)
+            data['angles'].append(pos)
+            data['rotary'].append(motor.rotary_pot_pv.get())
+            data['voltages'].append(voltage_pv.get())
 
-    motor.move(360.0)
-    motor.calibrate_motor(0.0)
-    motor.max_velocity_pv.put(orig_max_velocity, wait=True)
-    motor.velocity_pv.put(orig_velocity, wait=True)
-    # restore soft limits
-    motor.llm_pv.put(orig_llm, wait=True)
-    motor.hlm_pv.put(orig_hlm, wait=True)
+            for pot_id, linear_pot_pv in all_linear_pots.items():
+                data['linear'][pot_id].append(linear_pot_pv.get())
+    finally:
+        # move to 360 and then set it as 0 degrees
+        motor.move(360.0)
+        motor.calibrate_motor(0.0)
+        # restore velocity settings
+        motor.max_velocity_pv.put(orig_max_velocity, wait=True)
+        motor.velocity_pv.put(orig_velocity, wait=True)
+        # restore soft limits
+        motor.llm_pv.put(orig_llm, wait=True)
+        motor.hlm_pv.put(orig_hlm, wait=True)
 
     return data
 
