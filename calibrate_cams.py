@@ -111,6 +111,10 @@ class CamMotorAndPots(object):
         finally:
             self.calibration_set_pv.put(0, wait=True)
 
+    def calibrate_rotary_pot(self, gain, offset):
+        self.rotary_pot_gain_pv.put(gain, wait=True)
+        self.rotary_pot_offset_pv.put(offset, wait=True)
+
     def __repr__(self):
         return ('<CamMotorAndPots cam_number={cam_number} prefix={prefix!r} '
                 'connected={connected}>'
@@ -739,6 +743,11 @@ if __name__ == '__main__':
                                verbose=args.verbose)
         data['calibration'] = fit_results
         write_data(sys.stdout, data)
+
+        if args.store_to_pv:
+            cam = motors[args.number]
+            cam.calibrate_rotary_pot(fit_results['gain'],
+                                     fit_results['rotary_pot_offset'])
 
     fit_results = fit_data(data, line=args.line, plot=args.plot,
                            verbose=args.verbose)
