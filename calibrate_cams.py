@@ -713,8 +713,8 @@ if __name__ == '__main__':
             data['cam'] = args.number
     elif args.calibrate:
         prefix = args.calibrate
-        print('Connecting to {} line undulator ({}) with prefix {!r}'
-              ''.format(args.line, args.segment, prefix))
+        print('Connecting to {} line undulator (serial {}) with prefix {!r}'
+              ''.format(args.line, args.serial, prefix))
         if args.line == 'hxr':
             motors = setup_hgvpu(prefix=prefix)
         elif args.line == 'sxr':
