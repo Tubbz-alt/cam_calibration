@@ -250,6 +250,7 @@ def load_data_from_file(fn, line):
         if not line:
             continue
         elif line.startswith('caput') or line.startswith('USEG'):
+            data['prefix'] = line[:line.index('CAL')]
             line = line[line.index('CAL'):]
             items = [item for item in line.split(' ') if item]
             name = items[0]
@@ -278,6 +279,10 @@ def load_data_from_file(fn, line):
             if name.lower() != 'summary:':
                 if name.lower() == 'cam_number':
                     data['cam'] = int(items[-1])
+                elif name.lower() == 'prefix':
+                    data['prefix'] = items[-1]
+                elif name.lower() == 'line':
+                    data['line'] = items[-1]
                 else:
                     name = name_map.get(name, name)
                     data['calibration'][name] = float(items[-1])
@@ -598,8 +603,7 @@ def setup_sxu(prefix='camsim:', linear_pot_format='{}ADCM'):
     return cams
 
 
-def write_data(f, data, segment='UND1:150', precision=5):
-    prefix = 'USEG:{}:'.format(segment)
+def write_data(f, data, prefix, line, precision=5):
     name_map = OrderedDict(
         [('average_voltage', 'CALVOLTAVG'),
          ('angles', 'CALCAMANGLE'),
@@ -651,6 +655,9 @@ def write_data(f, data, segment='UND1:150', precision=5):
     print('', file=f)
     print('Summary:', file=f)
     print('cam_number = {}'.format(data['cam']), file=f)
+    print('prefix = {}'.format(prefix), file=f)
+    print('line = {}'.format(line), file=f)
+
     if 'calibration' in data:
         for key, value in sorted(data['calibration'].items()):
             fmt = '{:.%df}' % precision
@@ -706,6 +713,7 @@ if __name__ == '__main__':
             data['cam'] = args.number
     elif args.calibrate:
         prefix = args.calibrate
+        data['prefix'] = prefix
         print('Connecting to {} line undulator ({}) with prefix {!r}'
               ''.format(args.line, args.segment, prefix))
         if args.line == 'hxr':
@@ -739,21 +747,21 @@ if __name__ == '__main__':
                                     velocity=args.velocity, dwell=args.dwell,
                                     voltage_pv=voltage_pv,
                                     verbose=args.verbose)
-        fit_results = fit_data(data, line=args.line, plot=args.plot,
-                               verbose=args.verbose)
-        data['calibration'] = fit_results
-        write_data(sys.stdout, data)
-
-        if args.store_to_pv:
-            cam = motors[args.number]
-            cam.calibrate_rotary_pot(fit_results['gain'],
-                                     fit_results['rotary_pot_offset'])
 
     fit_results = fit_data(data, line=args.line, plot=args.plot,
                            verbose=args.verbose)
+    data['calibration'] = fit_results
+
     if args.save_to:
         with open(args.save_to, 'wt') as f:
-            write_data(f, data)
+            write_data(f, data, prefix=data['prefix'], line=args.line)
+    elif args.verbose:
+        write_data(sys.stdout, data, prefix=data['prefix'], line=args.line)
+
+    if args.store_to_pv:
+        cam = motors[args.number]
+        cam.calibrate_rotary_pot(fit_results['gain'],
+                                 fit_results['rotary_pot_offset'])
 
     if args.compare_to:
         plt.figure(10)
