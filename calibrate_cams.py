@@ -22,7 +22,10 @@ except Exception:
 import matplotlib.pyplot as plt
 
 
-AxisInfo = namedtuple('AxisInfo', 'motor rotary_pot linear_pots')
+voltage_suffix = 'EXCTTNADCM'
+AxisInfo = namedtuple('AxisInfo',
+                      'motor rotary_pot rotary_pot_gain rotary_pot_offset '
+                      'linear_pots')
 
 
 class PV(epics.PV):
@@ -63,6 +66,9 @@ class CamMotorAndPots(object):
         self.max_velocity_pv = self.motor.PV('VMAX', auto_monitor=False)
         self.torque_enable_pv = self.motor.PV('CNEN', auto_monitor=False)
         self.rotary_pot_pv = PV(self.prefix + info.rotary_pot)
+        self.rotary_pot_gain_pv = PV(self.prefix + info.rotary_pot_gain)
+        self.rotary_pot_offset_pv = PV(self.prefix + info.rotary_pot_offset)
+
         self.linear_pot_pvs = [
             PV(self.prefix + linear_pot_format.format(pot_id))
             for pot_id in info.linear_pots
@@ -136,6 +142,8 @@ HXUCamMotorAndPots.axis_info = OrderedDict(
     [(cam,
       AxisInfo(motor='CM{}MOTOR'.format(cam),
                rotary_pot='CM{}ADCM'.format(cam),
+               rotary_pot_gain='CM{}GAINC'.format(cam),
+               rotary_pot_offset='CM{}OFFSETC'.format(cam),
                linear_pots=HXUCamMotorAndPots.cam_to_linear_pots[cam]))
      for cam in range(1, 6)
      ]
@@ -157,6 +165,8 @@ SXUCamMotorAndPots.axis_info = OrderedDict(
     [(cam,
       AxisInfo(motor='CM{}MOTOR'.format(cam),
                rotary_pot='CM{}ADCM'.format(cam),
+               rotary_pot_gain='CM{}GAINC'.format(cam),
+               rotary_pot_offset='CM{}OFFSETC'.format(cam),
                linear_pots=SXUCamMotorAndPots.cam_to_linear_pots[cam]))
      for cam in range(1, 6)
      ]
@@ -417,6 +427,12 @@ def get_cam_to_linear_pots(line):
     return cls.cam_to_linear_pots
 
 
+def twin_legend(ax1, ax2, **kw):
+    lines, labels = ax1.get_legend_handles_labels()
+    lines2, labels2 = ax2.get_legend_handles_labels()
+    ax2.legend(lines + lines2, labels + labels2, **kw)
+
+
 def fit_data(data, line, plot=False, verbose=False):
     '''According to appropriate linear potentiometer, fit cam rotary pot'''
     cam_num = data['cam']
@@ -463,6 +479,7 @@ def fit_data(data, line, plot=False, verbose=False):
         plt.ion()
         plt.figure(cam_num)
         plt.clf()
+        plt.title('Cam {}'.format(data['cam']))
         plt.xlabel('Angle [deg]')
         plt.ylabel('Linear potentiometer [V]')
         plt.plot(angles, linear_pot, 'x',
@@ -479,8 +496,36 @@ def fit_data(data, line, plot=False, verbose=False):
         ax = plt.gca()
         twin_ax = ax.twinx()
         twin_ax.set_ylabel('Rotary potentiometer [V]')
-        twin_ax.plot(angles[:len(shifted_rotary_pot)], shifted_rotary_pot)
-        plt.legend()
+        # twin_ax.plot(angles[:len(shifted_rotary_pot)], shifted_rotary_pot)
+        twin_ax.plot(angles, rotary_pot)
+        twin_legend(ax, twin_ax)
+
+        if verbose:
+            def shift_180(d):
+                return np.roll(d, len(d) // 2)
+
+            plt.figure(10 + cam_num)
+            plt.clf()
+            ax = plt.gca()
+            plt.title('Cam {} Shifted values'.format(data['cam']))
+            plt.xlabel('Angle [deg]')
+            plt.ylabel('Linear potentiometer [V]')
+            ax.plot(shift_180(linear_pot), 'x',
+                    label='Calibration pot ({})'.format(linear_pot_number), lw=1)
+            ax.plot(shift_180(linear_fitted), label='Fitted calibration pot')
+
+            if verbose:
+                for pot, pot_values in data['linear'].items():
+                    if pot != linear_pot_number:
+                        ax.plot(shift_180(pot_values),
+                                label='Calibration pot ({})'.format(pot),
+                                lw=0.5)
+
+            twin_ax = ax.twinx()
+            twin_ax.set_ylabel('Rotary potentiometer [V]')
+            twin_ax.plot(shift_180(rotary_pot))
+            twin_legend(ax, twin_ax)
+
         plt.plot()
 
     linear_offset_rms_fit = np.std(linear_pot - linear_fitted) * 2000.
@@ -666,7 +711,7 @@ if __name__ == '__main__':
         else:
             raise ValueError('Unknown line; choose either sxr or hxr')
 
-        voltage_pv = PV(prefix + args.voltage_pv, auto_monitor=False)
+        voltage_pv = PV(prefix + voltage_suffix, auto_monitor=False)
 
         if args.verbose:
             def print_connected(pv):
