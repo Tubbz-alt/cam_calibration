@@ -272,8 +272,8 @@ def load_data_from_file(fn, line):
     return data
 
 
-def get_calibration_data(cams, cam_num, velocity, dwell,
-                         voltage_pv):
+def get_calibration_data(cams, cam_num, velocity, dwell, voltage_pv,
+                         verbose=False):
     'Move motors and get calibration data to be fit for a specific cam'
     check_connected(cams)
     voltage_pv.wait_for_connection()
@@ -318,13 +318,20 @@ def get_calibration_data(cams, cam_num, velocity, dwell,
             for pot_id, linear_pot_pv in all_linear_pots.items():
                 data['linear'][pot_id].append(linear_pot_pv.get())
     finally:
-        # move to 360 and then set it as 0 degrees
+        if verbose:
+            print('Moving motor to 360 and setting position as 0 degrees')
         motor.move(360.0)
         motor.calibrate_motor(0.0)
-        # restore velocity settings
+
+        if verbose:
+            print('Resetting velocity to {}, max velocity to {}'
+                  ''.format(orig_velocity, orig_max_velocity))
         motor.max_velocity_pv.put(orig_max_velocity, wait=True)
         motor.velocity_pv.put(orig_velocity, wait=True)
-        # restore soft limits
+
+        if verbose:
+            print('Resetting low limit to {}, high limit to {}'
+                  ''.format(orig_llm, orig_hlm))
         motor.llm_pv.put(orig_llm, wait=True)
         motor.hlm_pv.put(orig_hlm, wait=True)
 
@@ -472,7 +479,7 @@ def fit_data(data, line, plot=False, verbose=False):
         ax = plt.gca()
         twin_ax = ax.twinx()
         twin_ax.set_ylabel('Rotary potentiometer [V]')
-        twin_ax.plot(angles, shifted_rotary_pot)
+        twin_ax.plot(angles[:len(shifted_rotary_pot)], shifted_rotary_pot)
         plt.legend()
         plt.plot()
 
@@ -683,8 +690,8 @@ if __name__ == '__main__':
         print('Running calibration test...')
         data = get_calibration_data(motors, args.number,
                                     velocity=args.velocity, dwell=args.dwell,
-                                    voltage_pv=voltage_pv)
-        pprint(data)
+                                    voltage_pv=voltage_pv,
+                                    verbose=args.verbose)
         fit_results = fit_data(data, line=args.line, plot=args.plot,
                                verbose=args.verbose)
         data['calibration'] = fit_results
