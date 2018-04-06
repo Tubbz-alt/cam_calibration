@@ -475,6 +475,15 @@ def twin_legend(ax1, ax2, **kw):
     ax2.legend(lines + lines2, labels + labels2, **kw)
 
 
+def check_pass_fail(rotary_pot, linear_pot):
+    rotary_peak_idx = np.argmax(rotary_pot)
+
+    start_idx, points = rotary_peak_idx + -1, 10
+    slope_check_lin = linear_pot[start_idx:start_idx + points]
+    slope, yint = np.polyfit(range(points), slope_check_lin, 1)
+    return (start_idx, points), slope < 0
+
+
 def fit_data(data, line, plot=False, verbose=False):
     '''According to appropriate linear potentiometer, fit cam rotary pot'''
     cam_num = data['cam']
@@ -523,17 +532,28 @@ def fit_data(data, line, plot=False, verbose=False):
     def shift_180(d):
         return np.roll(d, len(d) // 2)
 
-    # passed =
+    slope_check_info, passed = check_pass_fail(rotary_pot, linear_pot)
+
     if plot:
         fig, ax = plt.subplots(1, 1, figsize=(9, 6))
         plt.title('Cam {} Calibration'.format(data['cam']))
         plt.xlabel('Angle [deg]')
         plt.ylabel('Linear potentiometer [V]')
         angles = np.asarray(angles) - 180
-        ax.plot(angles, shift_180(linear_pot), 'x',
+        ax.plot(angles, shift_180(linear_pot), 'o', markersize=0.5,
                 label='Calibration pot ({})'.format(linear_pot_number), lw=1)
         ax.plot(angles, shift_180(linear_fitted),
                 label='Fitted calibration pot')
+
+        start_idx, points = slope_check_info
+
+        checks = np.zeros_like(linear_pot)
+        checks[start_idx:start_idx + points] = linear_pot[start_idx:
+                                                          start_idx + points]
+        checks = shift_180(checks)
+
+        ax.plot(angles[checks != 0], checks[checks != 0], 'x',
+                label='Linear pot check area')
 
         ax.set_xlim(angles[0], angles[-1])
 
@@ -547,16 +567,18 @@ def fit_data(data, line, plot=False, verbose=False):
         twin_ax = ax.twinx()
         twin_ax.set_ylabel('Rotary potentiometer [V]')
         twin_ax.plot(angles, shift_180(rotary_pot))
-        twin_legend(ax, twin_ax, loc='best')
+        twin_legend(ax, twin_ax, loc='upper right')
 
         text_info = '''
 Rotary gain      : {:.4f}
 Rotary offset    : {:.4f}
+Status           : {}
 ----------------------------
 Gain fit RMS     : {:.4f}
 Phase offset     : {:.4f}
 Linear fit RMS   : {:.4f}
-'''.format(gain, rotary_offset, gain_rms_fit, linear_phase_offset,
+'''.format(gain, rotary_offset, 'PASSED' if passed else '**FAILED**',
+           gain_rms_fit, linear_phase_offset,
            linear_offset_rms_fit)
 
         plt.annotate(text_info, xy=(0.72, 0.01),
