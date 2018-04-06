@@ -12,6 +12,13 @@ from collections import OrderedDict, namedtuple
 
 from numpy import deg2rad, rad2deg, sin, cos
 import scipy.optimize
+import matplotlib
+
+try:
+    matplotlib.use('Qt5Agg')
+except Exception:
+    pass
+
 import matplotlib.pyplot as plt
 
 
@@ -51,7 +58,7 @@ class CamMotorAndPots(object):
         self.setpoint_pv = self.motor.PV('VAL', auto_monitor=False)
         self.llm_pv = self.motor.PV('LLM', auto_monitor=False)
         self.hlm_pv = self.motor.PV('HLM', auto_monitor=False)
-        self.readback_pv = self.motor.PV('DRBV', auto_monitor=False)
+        self.readback_pv = self.motor.PV('RBV', auto_monitor=False)
         self.velocity_pv = self.motor.PV('VELO', auto_monitor=False)
         self.max_velocity_pv = self.motor.PV('VMAX', auto_monitor=False)
         self.torque_enable_pv = self.motor.PV('CNEN', auto_monitor=False)
@@ -84,7 +91,7 @@ class CamMotorAndPots(object):
         self.stop_go_pv.put('Stop', wait=True)
 
     def move(self, pos):
-        ret = self.motor.move(val=pos, dial=True, wait=True)
+        ret = self.motor.move(val=pos, wait=True)
         if ret != 0:
             raise epics.motor.MotorException('Move failed: ret={}'.format(ret))
 
@@ -403,14 +410,16 @@ def get_cam_to_linear_pots(line):
     return cls.cam_to_linear_pots
 
 
-def fit_data(data, line, plot=False):
+def fit_data(data, line, plot=False, verbose=False):
     '''According to appropriate linear potentiometer, fit cam rotary pot'''
     cam_num = data['cam']
     angles = data['angles']
     rotary_pot = data['rotary']
 
     cam_to_linear_pots = get_cam_to_linear_pots(line)
-    linear_pots = [data['linear'][num] for num in cam_to_linear_pots[cam_num]]
+    linear_pot_numbers = cam_to_linear_pots[cam_num]
+    linear_pot_number = linear_pot_numbers[0]
+    linear_pots = [data['linear'][num] for num in linear_pot_numbers]
 
     shifted_angles, shifted_rotary_pot = shift_for_polyfit(angles, rotary_pot)
     data['shifted_rotary'] = shifted_rotary_pot
@@ -447,8 +456,23 @@ def fit_data(data, line, plot=False):
         plt.ion()
         plt.figure(cam_num)
         plt.clf()
-        plt.plot(linear_pot, 'x', label='Data', lw=1)
-        plt.plot(linear_fitted, label='Fitted')
+        plt.xlabel('Angle [deg]')
+        plt.ylabel('Linear potentiometer [V]')
+        plt.plot(angles, linear_pot, 'x',
+                 label='Calibration pot ({})'.format(linear_pot_number), lw=1)
+        plt.plot(angles, linear_fitted, label='Fitted calibration pot')
+
+        if verbose:
+            for pot, pot_values in data['linear'].items():
+                if pot != linear_pot_number:
+                    plt.plot(angles, pot_values,
+                             label='Calibration pot ({})'.format(pot),
+                             lw=0.5)
+
+        ax = plt.gca()
+        twin_ax = ax.twinx()
+        twin_ax.set_ylabel('Rotary potentiometer [V]')
+        twin_ax.plot(angles, shifted_rotary_pot)
         plt.legend()
         plt.plot()
 
@@ -661,11 +685,13 @@ if __name__ == '__main__':
                                     velocity=args.velocity, dwell=args.dwell,
                                     voltage_pv=voltage_pv)
         pprint(data)
-        fit_results = fit_data(data, line=args.line, plot=args.plot)
+        fit_results = fit_data(data, line=args.line, plot=args.plot,
+                               verbose=args.verbose)
         data['calibration'] = fit_results
         write_data(sys.stdout, data)
 
-    fit_results = fit_data(data, line=args.line, plot=args.plot)
+    fit_results = fit_data(data, line=args.line, plot=args.plot,
+                           verbose=args.verbose)
     if args.save_to:
         with open(args.save_to, 'wt') as f:
             write_data(f, data)
