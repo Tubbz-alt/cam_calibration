@@ -492,8 +492,8 @@ def fit_data(data, line, plot=False, verbose=False):
 
     yoff = poly_rot(np.asarray(shifted_angles))
 
-    if plot:
-        plt.figure(0)
+    if plot and verbose:
+        plt.figure(-1)
         plt.clf()
         plt.title('Deadband shift')
         plt.plot(angles, rotary_pot, label='input')
@@ -516,14 +516,16 @@ def fit_data(data, line, plot=False, verbose=False):
     fit_result, linear_fitted = cam_sinusoidal_fit(angles, linear_pot)
 
     linear_phase_offset = fit_result['phase']
+    # NOTE: octave includes a factor of 2000 below, which we removed
+    linear_offset_rms_fit = np.std(linear_pot - linear_fitted)
+    rotary_offset = (rotary_pot[0] / avg_voltage) * gain - linear_phase_offset
 
+    def shift_180(d):
+        return np.roll(d, len(d) // 2)
+
+    # passed =
     if plot:
-        def shift_180(d):
-            return np.roll(d, len(d) // 2)
-
-        plt.figure(cam_num)
-        plt.clf()
-        ax = plt.gca()
+        fig, ax = plt.subplots(1, 1, figsize=(9, 6))
         plt.title('Cam {} Calibration'.format(data['cam']))
         plt.xlabel('Angle [deg]')
         plt.ylabel('Linear potentiometer [V]')
@@ -532,6 +534,8 @@ def fit_data(data, line, plot=False, verbose=False):
                 label='Calibration pot ({})'.format(linear_pot_number), lw=1)
         ax.plot(angles, shift_180(linear_fitted),
                 label='Fitted calibration pot')
+
+        ax.set_xlim(angles[0], angles[-1])
 
         if verbose:
             for pot, pot_values in data['linear'].items():
@@ -543,18 +547,33 @@ def fit_data(data, line, plot=False, verbose=False):
         twin_ax = ax.twinx()
         twin_ax.set_ylabel('Rotary potentiometer [V]')
         twin_ax.plot(angles, shift_180(rotary_pot))
-        twin_legend(ax, twin_ax)
+        twin_legend(ax, twin_ax, loc='best')
+
+        text_info = '''
+Rotary gain      : {:.4f}
+Rotary offset    : {:.4f}
+----------------------------
+Gain fit RMS     : {:.4f}
+Phase offset     : {:.4f}
+Linear fit RMS   : {:.4f}
+'''.format(gain, rotary_offset, gain_rms_fit, linear_phase_offset,
+           linear_offset_rms_fit)
+
+        plt.annotate(text_info, xy=(0.72, 0.01),
+                     xycoords='axes fraction',
+                     family='Courier New',
+                     va="bottom",
+                     fontsize=8)
 
         plt.plot()
 
-    linear_offset_rms_fit = np.std(linear_pot - linear_fitted) * 2000.
-    rotary_offset = (rotary_pot[0] / avg_voltage) * gain - linear_phase_offset
     return dict(average_voltage=avg_voltage,
                 gain=gain,
                 gain_rms_fit=gain_rms_fit,
                 linear_phase_offset_rms_fit=linear_offset_rms_fit,
                 linear_phase_offset=linear_phase_offset,
                 rotary_pot_offset=rotary_offset,
+                # passed=passed,
                 )
 
 
@@ -785,7 +804,6 @@ if __name__ == '__main__':
             print('Failed to save results to {}: {} {}'
                   ''.format(fn, type(ex).__name__, ex))
         else:
-            plt.figure(data['cam'])
             plt.savefig('{}.pdf'.format(fn))
             print('Saved results to {}'.format(fn))
 
@@ -813,8 +831,10 @@ if __name__ == '__main__':
             fit_info_dicts=[data['calibration'], fit_results],
             line=args.line,
         )
+        plt.figure(0)
 
     if args.plot or args.compare_to:
         plt.ioff()
+        plt.tight_layout()
         print('(See plot)', file=sys.stderr)
         plt.show()
