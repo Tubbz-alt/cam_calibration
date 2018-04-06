@@ -49,8 +49,11 @@ class CamMotorAndPots(object):
         self.stop_pv = self.motor.PV('STOP', auto_monitor=False)
         self.calibration_set_pv = self.motor.PV('SET', auto_monitor=False)
         self.setpoint_pv = self.motor.PV('VAL', auto_monitor=False)
+        self.llm_pv = self.motor.PV('LLM', auto_monitor=False)
+        self.hlm_pv = self.motor.PV('HLM', auto_monitor=False)
         self.readback_pv = self.motor.PV('DRBV', auto_monitor=False)
         self.velocity_pv = self.motor.PV('VELO', auto_monitor=False)
+        self.max_velocity_pv = self.motor.PV('VMAX', auto_monitor=False)
         self.torque_enable_pv = self.motor.PV('CNEN', auto_monitor=False)
         self.rotary_pot_pv = PV(self.prefix + info.rotary_pot)
         self.linear_pot_pvs = [
@@ -59,7 +62,8 @@ class CamMotorAndPots(object):
         ]
 
         self.all_pvs = [self.stop_go_pv, self.stop_pv, self.setpoint_pv,
-                        self.readback_pv, self.velocity_pv, self.rotary_pot_pv,
+                        self.llm_pv, self.hlm_pv, self.readback_pv, 
+                        self.velocity_pv, self.max_velocity_pv, self.rotary_pot_pv,
                         self.torque_enable_pv, self.calibration_set_pv,
                         ] + self.linear_pot_pvs
 
@@ -277,7 +281,15 @@ def get_calibration_data(cams, cam_num, velocity, dwell,
     motor = cams[cam_num]
     motor.enable()
     motor.calibrate_motor(0.0)
+    orig_max_velocity = motor.max_velocity_pv.get()
+    orig_velocity = motor.velocity_pv.get()
+    motor.max_velocity_pv.put(velocity, wait=True)
     motor.velocity_pv.put(velocity, wait=True)
+    # extend soft limits
+    orig_llm = motor.llm_pv.get()
+    orig_hlm = motor.hlm_pv.get()
+    motor.llm_pv.put(-2)
+    motor.hlm_pv.put(362)
 
     data = {'cam': cam_num,
             'angles': [],
@@ -298,6 +310,11 @@ def get_calibration_data(cams, cam_num, velocity, dwell,
 
     motor.move(360.0)
     motor.calibrate_motor(0.0)
+    motor.max_velocity_pv.put(orig_max_velocity, wait=True)
+    motor.velocity_pv.put(orig_velocity, wait=True)
+    # restore soft limits
+    motor.llm_pv.put(orig_llm, wait=True)
+    motor.hlm_pv.put(orig_hlm, wait=True)
 
     return data
 
