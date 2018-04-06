@@ -4,10 +4,11 @@
 from __future__ import print_function
 import time
 import epics
+import os
 import sys
+import datetime
 import numpy as np
 
-from pprint import pprint
 from collections import OrderedDict, namedtuple
 
 from numpy import deg2rad, rad2deg, sin, cos
@@ -680,11 +681,11 @@ if __name__ == '__main__':
     parser.add_argument('--save-to', type=str,
                         help='Save calibration data to file')
 
+    parser.add_argument('--serial', '-s', type=str,
+                        help='Specify a relevant serial number')
     parser.add_argument('--line', '-l', type=str, choices=('hxr', 'sxr'),
                         default='hgvpu', required=True,
                         help='Specify the undulator line')
-    parser.add_argument('--segment', '-s', type=str,
-                        help='Specify the undulator segment')
     parser.add_argument('--number', '-n', type=int,
                         help='Specify the cam positioner number')
     parser.add_argument('--plot', '-p',
@@ -755,7 +756,25 @@ if __name__ == '__main__':
     if args.save_to:
         with open(args.save_to, 'wt') as f:
             write_data(f, data, prefix=data['prefix'], line=args.line)
-    elif args.verbose:
+    else:
+        timestamp = datetime.datetime.now().strftime('%Y%m%d_%H%M%S')
+        fn = os.path.join('{}_{}_{}.txt'.format(args.serial, data['cam'],
+                                                timestamp))
+        try:
+            os.makedirs('data')
+        except Exception:
+            pass
+
+        try:
+            with open(fn, 'wt') as f:
+                write_data(f, data, prefix=data['prefix'], line=args.line)
+        except Exception as ex:
+            print('Failed to save results to {}: {} {}'
+                  ''.format(fn, type(ex).__name__, ex))
+        else:
+            print('Saved results to {}'.format(fn))
+
+    if args.verbose:
         write_data(sys.stdout, data, prefix=data['prefix'], line=args.line)
 
     if args.store_to_pv:
