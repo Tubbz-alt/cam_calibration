@@ -280,10 +280,8 @@ def load_data_from_file(fn, line):
             if name.lower() != 'summary:':
                 if name.lower() == 'cam_number':
                     data['cam'] = int(items[-1])
-                elif name.lower() == 'prefix':
-                    data['prefix'] = items[-1]
-                elif name.lower() == 'line':
-                    data['line'] = items[-1]
+                elif name.lower() in ('prefix', 'line', 'serial'):
+                    data[name.lower()] = items[-1]
                 else:
                     name = name_map.get(name, name)
                     data['calibration'][name] = float(items[-1])
@@ -604,7 +602,7 @@ def setup_sxu(prefix='camsim:', linear_pot_format='{}ADCM'):
     return cams
 
 
-def write_data(f, data, prefix, line, precision=5):
+def write_data(f, data, prefix, line, serial, precision=5):
     name_map = OrderedDict(
         [('average_voltage', 'CALVOLTAVG'),
          ('angles', 'CALCAMANGLE'),
@@ -655,9 +653,10 @@ def write_data(f, data, prefix, line, precision=5):
 
     print('', file=f)
     print('Summary:', file=f)
+    print('line = {}'.format(line), file=f)
+    print('serial = {}'.format(serial), file=f)
     print('cam_number = {}'.format(data['cam']), file=f)
     print('prefix = {}'.format(prefix), file=f)
-    print('line = {}'.format(line), file=f)
 
     if 'calibration' in data:
         for key, value in sorted(data['calibration'].items()):
@@ -714,7 +713,6 @@ if __name__ == '__main__':
             data['cam'] = args.number
     elif args.calibrate:
         prefix = args.calibrate
-        data['prefix'] = prefix
         print('Connecting to {} line undulator ({}) with prefix {!r}'
               ''.format(args.line, args.segment, prefix))
         if args.line == 'hxr':
@@ -748,6 +746,7 @@ if __name__ == '__main__':
                                     velocity=args.velocity, dwell=args.dwell,
                                     voltage_pv=voltage_pv,
                                     verbose=args.verbose)
+        data['prefix'] = prefix
 
     fit_results = fit_data(data, line=args.line, plot=args.plot,
                            verbose=args.verbose)
@@ -755,7 +754,8 @@ if __name__ == '__main__':
 
     if args.save_to:
         with open(args.save_to, 'wt') as f:
-            write_data(f, data, prefix=data['prefix'], line=args.line)
+            write_data(f, data, prefix=data['prefix'], line=args.line,
+                       serial=args.serial)
     else:
         timestamp = datetime.datetime.now().strftime('%Y%m%d_%H%M%S')
         fn = os.path.join('{}_{}_{}.txt'.format(args.serial, data['cam'],
@@ -767,7 +767,8 @@ if __name__ == '__main__':
 
         try:
             with open(fn, 'wt') as f:
-                write_data(f, data, prefix=data['prefix'], line=args.line)
+                write_data(f, data, prefix=data['prefix'], line=args.line,
+                           serial=args.serial)
         except Exception as ex:
             print('Failed to save results to {}: {} {}'
                   ''.format(fn, type(ex).__name__, ex))
