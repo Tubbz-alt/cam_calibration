@@ -317,6 +317,8 @@ def load_data_from_file(fn, line):
                     data['cam'] = int(items[-1])
                 elif name.lower() in ('prefix', 'line', 'serial'):
                     data[name.lower()] = items[-1]
+                elif name.lower() in ('passed', ):
+                    data[name.lower()] = (items[-1].lower() == 'true')
                 else:
                     name = name_map.get(name, name)
                     data['calibration'][name] = float(items[-1])
@@ -583,7 +585,7 @@ Linear fit RMS   : {:.4f}
 
         plt.annotate(text_info, xy=(0.72, 0.01),
                      xycoords='axes fraction',
-                     family='Courier New',
+                     family='monospace',
                      va="bottom",
                      fontsize=8)
 
@@ -595,7 +597,7 @@ Linear fit RMS   : {:.4f}
                 linear_phase_offset_rms_fit=linear_offset_rms_fit,
                 linear_phase_offset=linear_phase_offset,
                 rotary_pot_offset=rotary_offset,
-                # passed=passed,
+                passed=passed,
                 )
 
 
@@ -710,9 +712,12 @@ def write_data(f, data, prefix, line, serial, precision=5):
     print('prefix = {}'.format(prefix), file=f)
 
     if 'calibration' in data:
+        fmt = '{:.%df}' % precision
         for key, value in sorted(data['calibration'].items()):
-            fmt = '{:.%df}' % precision
-            print('{} = {}'.format(key, fmt.format(value)), file=f)
+            if key in ('passed', ):
+                print('{} = {}'.format(key, value), file=f)
+            else:
+                print('{} = {}'.format(key, fmt.format(value)), file=f)
 
 
 if __name__ == '__main__':
