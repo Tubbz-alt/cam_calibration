@@ -29,6 +29,21 @@ AxisInfo = namedtuple('AxisInfo',
                       'motor rotary_pot_adc rotary_pot_gain rotary_pot_offset '
                       'rotary_pot_calibrated linear_pots')
 
+pyepics_move_codes = {
+    -13: 'invalid value (cannot convert to float).  Move not attempted.',
+    -12: 'target value outside soft limits.         Move not attempted.',
+    -11: 'drive PV is not connected:                Move not attempted.',
+    -8: 'move started, but timed-out.',
+    -7: 'move started, timed-out, but appears done.',
+    -5: 'move started, unexpected return value from PV.put()',
+    -4: 'move-with-wait finished, soft limit violation seen',
+    -3: 'move-with-wait finished, hard limit violation seen',
+    0: 'move-with-wait finish OK / move-without-wait executed, not confirmed',
+    1: 'move-without-wait executed, move confirmed',
+    3: 'move-without-wait finished, hard limit violation seen',
+    4: 'move-without-wait finished, soft limit violation seen',
+}
+
 
 @contextmanager
 def set_soft_limits(cam, low_limit, high_limit, verbose=False):
@@ -115,14 +130,17 @@ class CamMotorAndPots(object):
         return all(pv.connected for pv in self.all_pvs)
 
     def enable(self):
+        'Torque enable and SPMG=Go'
         self.torque_enable_pv.put(1, wait=True)
         self.stop_go_pv.put('Go', wait=True)
 
     def disable(self):
+        'Torque disable and SPMG=Stop'
         self.torque_enable_pv.put(0, wait=True)
         self.stop_go_pv.put('Stop', wait=True)
 
     def normal_mode(self):
+        'Torque disable and SPMG=Go'
         # In normal operation, we won't be poking single motors at a time, and
         # it's the responsibility of a higher level to enable torque when
         # starting motion.
@@ -131,8 +149,12 @@ class CamMotorAndPots(object):
 
     def move(self, pos):
         ret = self.motor.move(val=pos, wait=True)
+
         if ret != 0:
-            raise epics.motor.MotorException('Move failed: ret={}'.format(ret))
+            raise epics.motor.MotorException(
+                'Move to {} failed: ret={} ({})'
+                ''.format(pos, ret, pyepics_move_codes.get(ret, '?'))
+            )
 
     def calibrate_motor(self, position, verbose=False):
         assert self.connected
@@ -365,7 +387,6 @@ def get_calibration_data(cams, cam_num, velocity, dwell, voltage_pv,
 
                 for pot_id, linear_pot_pv in all_linear_pots.items():
                     data['linear'][pot_id].append(linear_pot_pv.get())
-
             if verbose:
                 print('Moving motor to 360 and setting position as 0 degrees')
 
