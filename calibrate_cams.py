@@ -68,8 +68,11 @@ def set_soft_limits(cam, low_limit, high_limit, verbose=False):
 
 
 class PV(epics.PV):
-    def get(self, **kw):
-        value = super(PV, self).get(**kw)
+    def __init__(self, pvname, auto_monitor=None, **kw):
+        super(PV, self).__init__(pvname, auto_monitor=False, **kw)
+
+    def get(self, use_monitor=False, **kw):
+        value = super(PV, self).get(use_monitor=use_monitor, **kw)
         if value is None:
             raise TimeoutError('Timed out while reading value')
         return value
@@ -94,16 +97,16 @@ class CamMotorAndPots(object):
             raise TimeoutError('Failed to connect to: {}'
                                ''.format(self.prefix + info.motor))
 
-        self.stop_go_pv = self.motor.PV('SPMG', auto_monitor=False)
-        self.stop_pv = self.motor.PV('STOP', auto_monitor=False)
-        self.calibration_set_pv = self.motor.PV('SET', auto_monitor=False)
-        self.setpoint_pv = self.motor.PV('VAL', auto_monitor=False)
-        self.llm_pv = self.motor.PV('LLM', auto_monitor=False)
-        self.hlm_pv = self.motor.PV('HLM', auto_monitor=False)
-        self.readback_pv = self.motor.PV('RBV', auto_monitor=False)
-        self.velocity_pv = self.motor.PV('VELO', auto_monitor=False)
-        self.max_velocity_pv = self.motor.PV('VMAX', auto_monitor=False)
-        self.torque_enable_pv = self.motor.PV('CNEN', auto_monitor=False)
+        self.stop_go_pv = self.motor.PV('SPMG')
+        self.stop_pv = self.motor.PV('STOP')
+        self.calibration_set_pv = self.motor.PV('SET')
+        self.setpoint_pv = self.motor.PV('VAL')
+        self.llm_pv = self.motor.PV('LLM')
+        self.hlm_pv = self.motor.PV('HLM')
+        self.readback_pv = self.motor.PV('RBV')
+        self.velocity_pv = self.motor.PV('VELO')
+        self.max_velocity_pv = self.motor.PV('VMAX')
+        self.torque_enable_pv = self.motor.PV('CNEN')
         self.rotary_pot_pv = PV(self.prefix + info.rotary_pot_adc)
         self.calibrated_readback_pv = PV(self.prefix +
                                          info.rotary_pot_calibrated)
@@ -717,7 +720,7 @@ def main(args):
         else:
             raise ValueError('Unknown line; choose either sxr or hxr')
 
-        voltage_pv = PV(prefix + voltage_suffix, auto_monitor=False)
+        voltage_pv = PV(prefix + voltage_suffix)
 
         if args.verbose:
             def print_connected(pv):
