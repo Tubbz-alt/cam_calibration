@@ -47,8 +47,8 @@ pyepics_move_codes = {
 
 @contextmanager
 def set_soft_limits(cam, low_limit, high_limit, verbose=False):
-    orig_llm = motor.llm_pv.get()
-    orig_hlm = motor.hlm_pv.get()
+    orig_llm = cam.llm_pv.get()
+    orig_hlm = cam.hlm_pv.get()
 
     if verbose:
         print('Setting low limit to {}, high limit to {}'
