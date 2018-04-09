@@ -685,44 +685,7 @@ def write_data(f, data, prefix, line, serial, precision=5):
                 print('{} = {}'.format(key, fmt.format(value)), file=f)
 
 
-if __name__ == '__main__':
-    import argparse
-
-    parser = argparse.ArgumentParser()
-    commands = parser.add_mutually_exclusive_group(required=True)
-    commands.add_argument('--calibrate', type=str,
-                          help='Calibrate motors with the given EPICS prefix')
-    commands.add_argument('--load', type=str,
-                          help='Load calibration data from file')
-
-    parser.add_argument('--store-to-pv',
-                        action='store_true',
-                        help='Store calibration data on motor')
-    parser.add_argument('--save-to', type=str,
-                        help='Save calibration data to file')
-
-    parser.add_argument('--serial', '-s', type=str,
-                        help='Specify a relevant serial number')
-    parser.add_argument('--line', '-l', type=str, choices=('hxr', 'sxr'),
-                        default='hxr', required=True,
-                        help='Specify the undulator line')
-    parser.add_argument('--number', '-n', type=int,
-                        help='Specify the cam positioner number')
-    parser.add_argument('--plot', '-p',
-                        action='store_true',
-                        help='Plot relevant calibration information')
-    parser.add_argument('--velocity', type=float, default=1.0,
-                        help='Velocity for calibration')
-    parser.add_argument('--compare-to', type=str,
-                        help='Compare calibration results with this file')
-    parser.add_argument('--dwell',
-                        type=float, default=1.0,
-                        help='Dwell time after move')
-    parser.add_argument('-v', '--verbose',
-                        action='store_true',
-                        help='Verbose operations')
-    args = parser.parse_args()
-
+def main(args):
     if args.load is not None:
         # 'data/2017-10-24/cam1_2017-10-24_10-12'
         data = load_data_from_file(args.load, line=args.line)
@@ -834,3 +797,43 @@ if __name__ == '__main__':
         plt.tight_layout()
         print('(See plot)', file=sys.stderr)
         plt.show()
+
+
+if __name__ == '__main__':
+    import argparse
+
+    parser = argparse.ArgumentParser()
+    commands = parser.add_mutually_exclusive_group(required=True)
+    commands.add_argument('--calibrate', type=str,
+                          help='Calibrate motors with the given EPICS prefix')
+    commands.add_argument('--load', type=str,
+                          help='Load calibration data from file')
+
+    parser.add_argument('--store-to-pv',
+                        action='store_true',
+                        help='Store calibration data on motor')
+    parser.add_argument('--save-to', type=str,
+                        help='Save calibration data to file')
+
+    parser.add_argument('--serial', '-s', type=str,
+                        help='Specify a relevant serial number')
+    parser.add_argument('--line', '-l', type=str, choices=('hxr', 'sxr'),
+                        default='hxr', required=True,
+                        help='Specify the undulator line')
+    parser.add_argument('--number', '-n', type=int,
+                        help='Specify the cam positioner number')
+    parser.add_argument('--plot', '-p',
+                        action='store_true',
+                        help='Plot relevant calibration information')
+    parser.add_argument('--velocity', type=float, default=1.0,
+                        help='Velocity for calibration')
+    parser.add_argument('--compare-to', type=str,
+                        help='Compare calibration results with this file')
+    parser.add_argument('--dwell',
+                        type=float, default=1.0,
+                        help='Dwell time after move')
+    parser.add_argument('-v', '--verbose',
+                        action='store_true',
+                        help='Verbose operations')
+    args = parser.parse_args()
+    main(args)
