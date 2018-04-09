@@ -528,7 +528,7 @@ def fit_data(data, line, plot=False, verbose=False):
 
     slope_check_info, passed = check_pass_fail(rotary_pot, linear_pot)
 
-    if plot:
+    try:
         fig, ax = plt.subplots(1, 1, figsize=(9, 6))
         plt.title('Cam {} Calibration'.format(data['cam']))
         plt.xlabel('Angle [deg]')
@@ -580,8 +580,12 @@ Linear fit RMS   : {:.4f}
                      family='monospace',
                      va="bottom",
                      fontsize=8)
-
-        plt.plot()
+    except Exception as ex:
+        print('ERROR: Plotting failed {}: {}'
+              ''.format(type(ex).__name__, ex))
+    else:
+        if plot:
+            plt.plot()
 
     return dict(average_input_voltage=avg_voltage,
                 gain=gain,
@@ -779,7 +783,7 @@ def main(args):
         if args.verbose:
             print('Setting motor to calibrated position: {}'
                   ''.format(calibrated_position))
-        motor.calibrate_motor(calibrated_position, verbose=args.verbose)
+        cam.calibrate_motor(calibrated_position, verbose=args.verbose)
 
     if args.compare_to:
         plt.figure(10)
