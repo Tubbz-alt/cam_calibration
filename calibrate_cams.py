@@ -560,7 +560,10 @@ def fit_data(data, line, plot=False, verbose=False):
 
         twin_ax = ax.twinx()
         twin_ax.set_ylabel('Rotary potentiometer [V]')
-        twin_ax.plot(angles, shift_180(rotary_pot))
+        twin_ax.plot(angles, shift_180(rotary_pot), label='Rotary pot',
+                     color='C8')
+        twin_ax.plot(angles + rotary_offset, shift_180(rotary_pot),
+                     alpha=0.4, color='C9', label='Rotary pot shifted')
         twin_legend(ax, twin_ax, loc='upper right')
 
         text_info = '''
