@@ -498,16 +498,6 @@ def fit_data(data, line, plot=False, verbose=False):
 
     yoff = poly_rot(np.asarray(shifted_angles))
 
-    if plot and verbose:
-        plt.figure(-1)
-        plt.clf()
-        plt.title('Deadband shift')
-        plt.plot(angles, rotary_pot, label='input')
-        plt.plot(shifted_angles, shifted_rotary_pot, label='shifted')
-        plt.plot(shifted_angles, yoff, label='post-fit')
-        plt.legend()
-        plt.plot()
-
     gain_rms_fit = np.std(shifted_rotary_pot - yoff)
 
     if 'voltages' in data:
