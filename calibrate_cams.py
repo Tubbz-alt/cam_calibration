@@ -81,7 +81,7 @@ epics.pv.PV = PV
 class CamMotorAndPots(object):
     # Awful OO for my convenience
 
-    def __init__(self, prefix, cam_number, linear_pot_format):
+    def __init__(self, prefix, cam_number, linear_pot_format='LP{}ADCM'):
         info = self.axis_info[cam_number]
 
         self.prefix = prefix
@@ -172,9 +172,10 @@ class CamMotorAndPots(object):
         self.rotary_pot_offset_pv.put(offset, wait=True)
 
     def __repr__(self):
-        return ('<CamMotorAndPots cam_number={cam_number} prefix={prefix!r} '
+        return ('<{class_name} cam_number={cam_number} prefix={prefix!r} '
                 'connected={connected}>'
-                ''.format(cam_number=self.cam_number,
+                ''.format(class_name=type(self).__name__,
+                          cam_number=self.cam_number,
                           prefix=self.prefix,
                           connected=self.connected)
                 )
@@ -211,16 +212,11 @@ class HXUCamMotorAndPots(CamMotorAndPots):
 class SXUCamMotorAndPots(CamMotorAndPots):
     # even horizontal, odd vertical
     cam_to_linear_pots = {
-        #  1: (3, ),
-        #  2: (1, 2),
-        #  3: (1, 2),
-        #  4: (5, 4),
-        #  5: (5, 4),
-        1: ('LP3', ),
-        2: ('LP1', 'LP2'),
-        3: ('LP1', 'LP2'),
-        4: ('LP5', 'LP4'),
-        5: ('LP5', 'LP4'),
+        1: (3, ),
+        2: (1, 2),
+        3: (1, 2),
+        4: (5, 4),
+        5: (5, 4),
     }
 
 
@@ -275,49 +271,28 @@ def load_data_from_file(fn, line):
         'linear_offset': 'linear_phase_offset',
     }
 
-    # TODO make generic
-    if line == 'sxr':
-        linear_map = dict(
-            [(1, 'LP3'),
-             (2, 'LP1'),
-             (3, 'LP2'),
-             (5, 'LP5'),
-             (6, 'LP5'),
-             (7, 'LP4'),
-             ]
-        )
-    else:
-        linear_map = dict(
-            [(1, 1),
-             (2, 2),
-             (3, 3),
-             (5, 5),
-             (6, 6),
-             (7, 7),
-             ]
-        )
-
+    in_summary = False
     for line in lines:
         line = line.strip()
         if not line:
             continue
-        elif line.startswith('caput') or ':CAL' in line:
-            data['prefix'] = line[:line.index('CAL')]
-            line = line[line.index('CAL'):]
+        elif line.lower() == 'summary:':
+            in_summary = True
+        elif not in_summary:
             items = [item for item in line.split(' ') if item]
             name = items[0]
-            if name == 'CALVOLTAVG':
-                data['calibration']['average_voltage'] = float(items[1])
+            if name == 'AVERAGE_INPUT_VOLTAGE':
+                data['calibration']['average_input_voltage'] = float(items[1])
             else:
                 values = [float(item) for item in items[2:]]
-                if name == 'CALCAMANGLE':
-                    data['angles'] = values
-                elif name == 'CALCAMPOT':
-                    data['rotary'] = values
-                else:
+                if name in ('ANGLES', 'ROTARY'):
+                    print('loaded ', name)
+                    data[name.lower()] = values
+                elif name.startswith('LINEAR_POT_'):
                     idx = int(name[-1])
-                    linear_id = linear_map[idx]
-                    data['linear'][linear_id] = values
+                    data['linear'][idx] = values
+                else:
+                    raise ValueError('Unknown key: {}'.format(name))
                 print(name, len(values))
         else:
             if line.startswith('# '):
@@ -328,16 +303,16 @@ def load_data_from_file(fn, line):
 
             items = [item for item in line.split(' ') if item]
             name = items[0]
-            if name.lower() != 'summary:':
-                if name.lower() == 'cam_number':
-                    data['cam'] = int(items[-1])
-                elif name.lower() in ('prefix', 'line', 'serial'):
-                    data[name.lower()] = items[-1]
-                elif name.lower() in ('passed', ):
-                    data[name.lower()] = (items[-1].lower() == 'true')
-                else:
-                    name = name_map.get(name, name)
-                    data['calibration'][name] = float(items[-1])
+
+            if name.lower() == 'cam_number':
+                data['cam'] = int(items[-1])
+            elif name.lower() in ('prefix', 'line', 'serial'):
+                data[name.lower()] = items[-1]
+            elif name.lower() in ('passed', ):
+                data[name.lower()] = (items[-1].lower() == 'true')
+            else:
+                name = name_map.get(name, name)
+                data['calibration'][name] = float(items[-1])
             print(name, items[-1])
 
     return data
@@ -534,9 +509,9 @@ def fit_data(data, line, plot=False, verbose=False):
 
     if 'voltages' in data:
         avg_voltage = np.average(data['voltages'])
-        data['calibration']['average_voltage'] = avg_voltage
+        data['calibration']['average_input_voltage'] = avg_voltage
     else:
-        avg_voltage = data['calibration']['average_voltage']
+        avg_voltage = data['calibration']['average_input_voltage']
 
     gain = avg_voltage / poly_rot.coeffs[0]
     linear_pot = linear_pots[0]
@@ -608,7 +583,7 @@ Linear fit RMS   : {:.4f}
 
         plt.plot()
 
-    return dict(average_voltage=avg_voltage,
+    return dict(average_input_voltage=avg_voltage,
                 gain=gain,
                 gain_rms_fit=gain_rms_fit,
                 linear_phase_offset_rms_fit=linear_offset_rms_fit,
@@ -625,7 +600,7 @@ def compare_fits(data, labels, fit_info_dicts, line):
     cam_to_linear_pots = get_cam_to_linear_pots(line)
     linear_pot = data['linear'][cam_to_linear_pots[cam_num][0]]
     parameter_comparison = {
-        'average_voltage': [],
+        'average_input_voltage': [],
         'gain': [],
         'gain_rms_fit': [],
         'linear_offset_rms_fit': [],
@@ -654,75 +629,50 @@ def compare_fits(data, labels, fit_info_dicts, line):
     plt.legend()
 
 
-def setup_hgvpu(prefix='camsim:', linear_pot_format='LP{}ADCM'):
+def setup_hgvpu(prefix):
     cams = OrderedDict(
-        (cam,
-         HXUCamMotorAndPots(prefix, cam_number=cam,
-                            linear_pot_format=linear_pot_format))
+        (cam, HXUCamMotorAndPots(prefix, cam_number=cam))
         for cam in HXUCamMotorAndPots.axis_info)
     return cams
 
 
-def setup_sxu(prefix='camsim:', linear_pot_format='{}ADCM'):
+def setup_sxu(prefix):
     cams = OrderedDict(
-        (cam,
-         SXUCamMotorAndPots(prefix, cam_number=cam,
-                            linear_pot_format=linear_pot_format))
+        (cam, SXUCamMotorAndPots(prefix, cam_number=cam))
         for cam in HXUCamMotorAndPots.axis_info)
     return cams
 
 
 def write_data(f, data, prefix, line, serial, precision=5):
-    name_map = OrderedDict(
-        [('average_voltage', 'CALVOLTAVG'),
-         ('angles', 'CALCAMANGLE'),
-         ('rotary', 'CALCAMPOT'),
-         ]
-    )
-
-    linear_pot_map = OrderedDict(
-        [(1, 'CALGDRPOT1'),
-         (2, 'CALGDRPOT2'),
-         (3, 'CALGDRPOT3'),
-         (5, 'CALGDRPOT5'),
-         (6, 'CALGDRPOT6'),
-         (7, 'CALGDRPOT7'),
-
-         ('LP3', 'CALGDRPOT1'),
-         ('LP1', 'CALGDRPOT2'),
-         ('LP2', 'CALGDRPOT3'),
-         ('LP5', 'CALGDRPOT5'),
-         ('LP5', 'CALGDRPOT6'),
-         ('LP4', 'CALGDRPOT7'),
-         ]
-    )
-
     def array_to_string(arr, precision):
         fmt = '{:.%df}' % precision
         return ' '.join(fmt.format(v) for v in arr)
 
     def write_array(f, name, value):
-        print('{} {} {}'.format(prefix + name, len(value),
+        print('{} {} {}'.format(name, len(value),
                                 array_to_string(value, precision),
                                 ),
               file=f)
 
-    for name, write_name in name_map.items():
-        if name == 'average_voltage':
+    for name in ('average_input_voltage', 'angles', 'rotary'):
+        write_name = name.upper()
+        if name == 'average_input_voltage':
             if 'calibration' not in data:
                 continue
             value = data['calibration'][name]
-            print('{} {}'.format(prefix + write_name, value), file=f)
+            print('{} {}'.format(write_name, value), file=f)
         else:
             value = data[name]
             write_array(f, write_name, value)
 
-    for pot_idx, write_name in linear_pot_map.items():
-        if pot_idx in data['linear']:
-            write_array(f, write_name, data['linear'][pot_idx])
+    for pot_idx, pot_data in data['linear'].items():
+        write_array(f, 'LINEAR_POT_{}'.format(pot_idx), pot_data)
 
     print('', file=f)
     print('Summary:', file=f)
+    if 'calibration' in data and 'passed' in data['calibration']:
+        print('passed = {}'.format(data['calibration']['passed']), file=f)
+
     print('line = {}'.format(line), file=f)
     print('serial = {}'.format(serial), file=f)
     print('cam_number = {}'.format(data['cam']), file=f)
@@ -731,9 +681,7 @@ def write_data(f, data, prefix, line, serial, precision=5):
     if 'calibration' in data:
         fmt = '{:.%df}' % precision
         for key, value in sorted(data['calibration'].items()):
-            if key in ('passed', ):
-                print('{} = {}'.format(key, value), file=f)
-            else:
+            if key not in ('passed', ):
                 print('{} = {}'.format(key, fmt.format(value)), file=f)
 
 
@@ -756,7 +704,7 @@ if __name__ == '__main__':
     parser.add_argument('--serial', '-s', type=str,
                         help='Specify a relevant serial number')
     parser.add_argument('--line', '-l', type=str, choices=('hxr', 'sxr'),
-                        default='hgvpu', required=True,
+                        default='hxr', required=True,
                         help='Specify the undulator line')
     parser.add_argument('--number', '-n', type=int,
                         help='Specify the cam positioner number')
