@@ -30,6 +30,7 @@ AxisInfo = namedtuple('AxisInfo',
                       'rotary_pot_calibrated linear_pots')
 
 
+@contextmanager
 def set_soft_limits(cam, low_limit, high_limit, verbose=False):
     orig_llm = motor.llm_pv.get()
     orig_hlm = motor.hlm_pv.get()
@@ -89,7 +90,8 @@ class CamMotorAndPots(object):
         self.max_velocity_pv = self.motor.PV('VMAX', auto_monitor=False)
         self.torque_enable_pv = self.motor.PV('CNEN', auto_monitor=False)
         self.rotary_pot_pv = PV(self.prefix + info.rotary_pot_adc)
-        self.calibrated_readback_pv = PV(self.prefix + info.rotary_pot_calibrated)
+        self.calibrated_readback_pv = PV(self.prefix +
+                                         info.rotary_pot_calibrated)
         self.rotary_pot_gain_pv = PV(self.prefix + info.rotary_pot_gain)
         self.rotary_pot_offset_pv = PV(self.prefix + info.rotary_pot_offset)
 
@@ -340,8 +342,6 @@ def get_calibration_data(cams, cam_num, velocity, dwell, voltage_pv,
     motor = cams[cam_num]
     orig_max_velocity = motor.max_velocity_pv.get()
     orig_velocity = motor.velocity_pv.get()
-    orig_llm = motor.llm_pv.get()
-    orig_hlm = motor.hlm_pv.get()
 
     data = {'cam': cam_num,
             'angles': [],
@@ -358,7 +358,7 @@ def get_calibration_data(cams, cam_num, velocity, dwell, voltage_pv,
         motor.velocity_pv.put(velocity, wait=True)
         # extend soft limits
 
-        with set_soft_limit(self, -2, 362, verbose=verbose):
+        with set_soft_limits(motor, -2, 362, verbose=verbose):
             for pos in move_through_range(motor, 0, 360, 2):
                 time.sleep(dwell)
                 data['angles'].append(pos)
