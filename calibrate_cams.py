@@ -564,15 +564,15 @@ def fit_data(data, line, plot=False, verbose=False):
         twin_legend(ax, twin_ax, loc='upper right')
 
         text_info = '''
+Status           : {}
 Rotary gain      : {:.4f}
 Rotary offset    : {:.4f}
-Status           : {}
 ----------------------------
 Gain fit RMS     : {:.4f}
 Phase offset     : {:.4f}
 Linear fit RMS   : {:.4f}
-'''.format(gain, rotary_offset, 'PASSED' if passed else '**FAILED**',
-           gain_rms_fit, linear_phase_offset,
+'''.format('PASSED' if passed else '**FAILED**',
+           gain, rotary_offset, gain_rms_fit, linear_phase_offset,
            linear_offset_rms_fit)
 
         plt.annotate(text_info, xy=(0.72, 0.01),
@@ -774,7 +774,7 @@ def main(args):
         write_data(sys.stdout, data, prefix=data['prefix'], line=args.line,
                    serial=args.serial)
 
-    if args.store_to_pv:
+    if args.store_to_pv and fit_results.get('passed'):
         cam = motors[args.number]
         cam.calibrate_rotary_pot(fit_results['gain'],
                                  fit_results['rotary_pot_offset'])
