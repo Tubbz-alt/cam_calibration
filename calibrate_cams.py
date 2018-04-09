@@ -26,7 +26,7 @@ import matplotlib.pyplot as plt
 
 voltage_suffix = 'EXCTTNADCM'
 AxisInfo = namedtuple('AxisInfo',
-                      'motor rotary_pot rotary_pot_gain rotary_pot_offset '
+                      'motor rotary_pot_adc rotary_pot_gain rotary_pot_offset '
                       'rotary_pot_calibrated linear_pots')
 
 
@@ -157,6 +157,16 @@ class CamMotorAndPots(object):
                           connected=self.connected)
                 )
 
+    @classmethod
+    def _get_axis_info(cls, cam_num):
+        return AxisInfo(motor='CM{}MOTOR'.format(cam_num),
+                        rotary_pot_adc='CM{}ADCM'.format(cam_num),
+                        rotary_pot_calibrated='CM{}READDEG'.format(cam_num),
+                        rotary_pot_gain='CM{}GAINC'.format(cam_num),
+                        rotary_pot_offset='CM{}OFFSETC'.format(cam_num),
+                        linear_pots=cls.cam_to_linear_pots[cam_num],
+                        )
+
 
 class HXUCamMotorAndPots(CamMotorAndPots):
     # Note: linear potentiometers are as follows for the LCLS-I girder:
@@ -176,22 +186,14 @@ class HXUCamMotorAndPots(CamMotorAndPots):
     }
 
 
-HXUCamMotorAndPots.axis_info = OrderedDict(
-    [(cam,
-      AxisInfo(motor='CM{}MOTOR'.format(cam),
-               rotary_pot='CM{}ADCM'.format(cam),
-               rotary_pot_calibrated='CM{}READDEG'.format(cam),
-               rotary_pot_gain='CM{}GAINC'.format(cam),
-               rotary_pot_offset='CM{}OFFSETC'.format(cam),
-               linear_pots=HXUCamMotorAndPots.cam_to_linear_pots[cam]))
-     for cam in range(1, 6)
-     ]
-)
-
-
 class SXUCamMotorAndPots(CamMotorAndPots):
     # even horizontal, odd vertical
     cam_to_linear_pots = {
+        #  1: (3, ),
+        #  2: (1, 2),
+        #  3: (1, 2),
+        #  4: (5, 4),
+        #  5: (5, 4),
         1: ('LP3', ),
         2: ('LP1', 'LP2'),
         3: ('LP1', 'LP2'),
@@ -200,22 +202,14 @@ class SXUCamMotorAndPots(CamMotorAndPots):
     }
 
 
-SXUCamMotorAndPots.axis_info = OrderedDict(
-    [(cam,
-      AxisInfo(motor='CM{}MOTOR'.format(cam),
-               rotary_pot='CM{}ADCM'.format(cam),
-               rotary_pot_calibrated='CM{}READDEG'.format(cam),
-               rotary_pot_gain='CM{}GAINC'.format(cam),
-               rotary_pot_offset='CM{}OFFSETC'.format(cam),
-               linear_pots=SXUCamMotorAndPots.cam_to_linear_pots[cam]))
-     for cam in range(1, 6)
-     ]
-)
-
-
 line_to_class = {'hxr': HXUCamMotorAndPots,
                  'sxr': SXUCamMotorAndPots
                  }
+
+for cls in (HXUCamMotorAndPots, SXUCamMotorAndPots):
+    cls.axis_info = OrderedDict(
+        [(cam, cls._get_axis_info(cam)) for cam in range(1, 6)]
+    )
 
 
 def move_through_range(cam, low=0, high=360, step=2):
@@ -362,6 +356,8 @@ def get_calibration_data(cams, cam_num, velocity, dwell, voltage_pv,
 
         with set_soft_limits(motor, -2, 362, verbose=verbose):
             for pos in move_through_range(motor, 0, 360, 2):
+                if verbose and (pos % 20) == 0:
+                    print('- Moved to {} degrees'.format(pos))
                 time.sleep(dwell)
                 data['angles'].append(pos)
                 data['rotary'].append(motor.rotary_pot_pv.get())
@@ -768,6 +764,10 @@ if __name__ == '__main__':
         elif args.number is not None:
             data['cam'] = args.number
     elif args.calibrate:
+        if args.number is None:
+            print('ERROR: Must specify cam positioner number to calibrate')
+            sys.exit(1)
+
         prefix = args.calibrate
         print('Connecting to {} line undulator (serial {}) with prefix {!r}'
               ''.format(args.line, args.serial, prefix))
