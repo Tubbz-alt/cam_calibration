@@ -514,7 +514,8 @@ def fit_data(data, line, plot=False, verbose=False):
     linear_phase_offset = fit_result['phase']
     # NOTE: octave includes a factor of 2000 below, which we removed
     linear_offset_rms_fit = np.std(linear_pot - linear_fitted)
-    rotary_offset = (rotary_pot[0] / avg_voltage) * gain - linear_phase_offset
+    rotary_offset = ((rotary_pot[0] / avg_voltage) * gain -
+                     linear_phase_offset - 180)
 
     def shift_180(d):
         return np.roll(d, len(d) // 2)
