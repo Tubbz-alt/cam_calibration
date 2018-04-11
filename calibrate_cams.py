@@ -24,6 +24,7 @@ except Exception:
 import matplotlib.pyplot as plt
 
 
+ACCEPTABLE_DEGREES = 15
 voltage_suffix = 'EXCTTNADCM'
 AxisInfo = namedtuple('AxisInfo',
                       'motor rotary_pot_adc rotary_pot_gain rotary_pot_offset '
@@ -47,6 +48,7 @@ pyepics_move_codes = {
 
 @contextmanager
 def set_soft_limits(cam, low_limit, high_limit, verbose=False):
+    '[Context manager] Set and then reset soft limits for a cam'
     orig_llm = cam.llm_pv.get()
     orig_hlm = cam.hlm_pv.get()
 
@@ -73,6 +75,7 @@ class PV(epics.PV):
 
     def get(self, use_monitor=False, **kw):
         value = super(PV, self).get(use_monitor=use_monitor, **kw)
+        # Key difference to pyepics: raise when a timeout occurs
         if value is None:
             raise TimeoutError('Timed out while reading value')
         return value
@@ -241,6 +244,7 @@ def move_through_range(cam, low=0, high=360, step=2):
 
 
 def check_connected(cams):
+    'Ensure all cam PVs are connected'
     for num, cam in cams.items():
         if not cam.connected:
             for pv in cam.all_pvs:
@@ -349,7 +353,6 @@ def get_calibration_data(cams, cam_num, velocity, dwell, voltage_pv,
 
     try:
         motor.enable()
-        motor.calibrate_motor(0.0)
         motor.max_velocity_pv.put(velocity, wait=True)
         motor.velocity_pv.put(velocity, wait=True)
         # extend soft limits
@@ -388,6 +391,7 @@ def get_calibration_data(cams, cam_num, velocity, dwell, voltage_pv,
 
 
 def shift_for_polyfit(angles, rotary_pot, debug=False):
+    'Shift the rotary pot deadband around to fit and later calculate the gain'
     # step = angles[1] - angles[0]
     # Find min/max rotary pot values, search for the deadband
     imin = np.argmin(rotary_pot)
@@ -412,6 +416,7 @@ def sinusoid(angles, amp, freq, phase, offset):
 
 
 def sinusoid_params_from_linear_pot(angles, lin_pot):
+    'Initial guess at the linear sinusoid parameter from the linear pot readout'
     amp_guess = (np.max(lin_pot) - np.min(lin_pot)) / 2
     freq_guess = 1.
 
@@ -467,18 +472,36 @@ def get_cam_to_linear_pots(line):
 
 
 def twin_legend(ax1, ax2, **kw):
+    'Add a shared legend for 2 axes'
     lines, labels = ax1.get_legend_handles_labels()
     lines2, labels2 = ax2.get_legend_handles_labels()
     ax2.legend(lines + lines2, labels + labels2, **kw)
 
 
-def check_pass_fail(rotary_pot, linear_pot):
-    rotary_peak_idx = np.argmax(rotary_pot)
+def check_pass_fail(delta_angle, rotary_pot, linear_pot, linear_phase_offset):
+    '''Pass/fail of rotary/linear pot calibration
 
+    1. Ensure that the rotary potentiometer dead-band is in the negative slope
+       of the sinusoid
+    2. Verify that the rotary potentiometer is physically aligned within an
+       acceptable range (around the sinusoid midpoint) - see ACCEPTABLE_DEGREES
+    '''
+    rotary_peak_idx = np.argmax(rotary_pot)
     start_idx, points = rotary_peak_idx + -1, 10
     slope_check_lin = linear_pot[start_idx:start_idx + points]
     slope, yint = np.polyfit(range(points), slope_check_lin, 1)
-    return (start_idx, points), slope < 0
+
+    # maximum decreasing slope at 180, shifted by the linear phase offset
+    half_angle = (180 + linear_phase_offset) % 360
+    half_idx = int(half_angle / delta_angle)
+    deadband_to_center_deg = ((rotary_peak_idx - half_idx) * delta_angle) % 360
+    print('Deadband to linear center:', deadband_to_center_deg, 'deg')
+
+    center_ok = (abs(deadband_to_center_deg) < ACCEPTABLE_DEGREES or
+                 abs(deadband_to_center_deg) > (360 - ACCEPTABLE_DEGREES))
+
+    passed = (slope < 0) and center_ok
+    return (start_idx, points), passed
 
 
 def fit_data(data, line, plot=False, verbose=False):
@@ -512,15 +535,17 @@ def fit_data(data, line, plot=False, verbose=False):
     fit_result, linear_fitted = cam_sinusoidal_fit(angles, linear_pot)
 
     linear_phase_offset = fit_result['phase']
+    rotary_offset = (rotary_pot[0] / avg_voltage) * gain - linear_phase_offset
+
     # NOTE: octave includes a factor of 2000 below, which we removed
     linear_offset_rms_fit = np.std(linear_pot - linear_fitted)
-    rotary_offset = ((rotary_pot[0] / avg_voltage) * gain -
-                     linear_phase_offset - 180)
 
     def shift_180(d):
         return np.roll(d, len(d) // 2)
 
-    slope_check_info, passed = check_pass_fail(rotary_pot, linear_pot)
+    slope_check_info, passed = check_pass_fail(angles[1] - angles[0],
+                                               rotary_pot, linear_pot,
+                                               linear_phase_offset)
 
     try:
         fig, ax = plt.subplots(1, 1, figsize=(9, 6))
@@ -550,14 +575,12 @@ def fit_data(data, line, plot=False, verbose=False):
                 if pot != linear_pot_number:
                     ax.plot(angles, shift_180(pot_values),
                             label='Calibration pot ({})'.format(pot),
-                            lw=0.5)
+                            linestyle='--', linewidth=0.5)
 
         twin_ax = ax.twinx()
         twin_ax.set_ylabel('Rotary potentiometer [V]')
         twin_ax.plot(angles, shift_180(rotary_pot), label='Rotary pot',
                      color='indigo')
-        twin_ax.plot(angles + rotary_offset, shift_180(rotary_pot),
-                     alpha=0.4, color='lightblue', label='Rotary pot shifted')
         twin_legend(ax, twin_ax, loc='upper right')
 
         text_info = '''
@@ -595,6 +618,7 @@ Linear fit RMS   : {:.4f}
 
 
 def compare_fits(data, labels, fit_info_dicts, line):
+    'Compare a number of fits to each other'
     cam_num = data['cam']
     angles = np.asarray(data['angles'])
     # rotary_pot = data['shifted_rotary']
@@ -631,6 +655,7 @@ def compare_fits(data, labels, fit_info_dicts, line):
 
 
 def setup_hgvpu(prefix):
+    'Set up the HXUCamMotorAndPots classes with a specific EPICS prefix'
     cams = OrderedDict(
         (cam, HXUCamMotorAndPots(prefix, cam_number=cam))
         for cam in HXUCamMotorAndPots.axis_info)
@@ -638,6 +663,7 @@ def setup_hgvpu(prefix):
 
 
 def setup_sxu(prefix):
+    'Set up the SXUCamMotorAndPots classes with a specific EPICS prefix'
     cams = OrderedDict(
         (cam, SXUCamMotorAndPots(prefix, cam_number=cam))
         for cam in HXUCamMotorAndPots.axis_info)
@@ -645,6 +671,7 @@ def setup_sxu(prefix):
 
 
 def write_data(f, data, prefix, line, serial, precision=5):
+    'Write to file the calibration data'
     def array_to_string(arr, precision):
         fmt = '{:.%df}' % precision
         return ' '.join(fmt.format(v) for v in arr)
@@ -688,7 +715,6 @@ def write_data(f, data, prefix, line, serial, precision=5):
 
 def main(args):
     if args.load is not None:
-        # 'data/2017-10-24/cam1_2017-10-24_10-12'
         data = load_data_from_file(args.load, line=args.line)
         if 'cam' not in data:
             if args.number is None:
