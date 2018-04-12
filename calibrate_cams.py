@@ -24,7 +24,7 @@ except Exception:
 import matplotlib.pyplot as plt
 
 
-ACCEPTABLE_DEGREES = 15
+ACCEPTABLE_DEGREES = 40
 voltage_suffix = 'EXCTTNADCM'
 AxisInfo = namedtuple('AxisInfo',
                       'motor rotary_pot_adc rotary_pot_gain rotary_pot_offset '
@@ -492,7 +492,7 @@ def check_pass_fail(delta_angle, rotary_pot, linear_pot, linear_phase_offset):
     slope, yint = np.polyfit(range(points), slope_check_lin, 1)
 
     # maximum decreasing slope at 180, shifted by the linear phase offset
-    half_angle = (180 + linear_phase_offset) % 360
+    half_angle = (180 - linear_phase_offset) % 360
     half_idx = int(half_angle / delta_angle)
     deadband_to_center_deg = ((rotary_peak_idx - half_idx) * delta_angle) % 360
     print('Deadband to linear center:', deadband_to_center_deg, 'deg')
