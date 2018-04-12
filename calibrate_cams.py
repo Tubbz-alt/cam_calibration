@@ -540,9 +540,6 @@ def fit_data(data, line, plot=False, verbose=False):
     # NOTE: octave includes a factor of 2000 below, which we removed
     linear_offset_rms_fit = np.std(linear_pot - linear_fitted)
 
-    def shift_180(d):
-        return np.roll(d, len(d) // 2)
-
     slope_check_info, passed = check_pass_fail(angles[1] - angles[0],
                                                rotary_pot, linear_pot,
                                                linear_phase_offset)
@@ -552,10 +549,10 @@ def fit_data(data, line, plot=False, verbose=False):
         plt.title('Cam {} Calibration'.format(data['cam']))
         plt.xlabel('Angle [deg]')
         plt.ylabel('Linear potentiometer [V]')
-        angles = np.asarray(angles) - 180
-        ax.plot(angles, shift_180(linear_pot), 'o', markersize=0.5,
+        angles = np.asarray(angles)
+        ax.plot(angles, linear_pot, 'o', markersize=0.5,
                 label='Calibration pot ({})'.format(linear_pot_number), lw=1)
-        ax.plot(angles, shift_180(linear_fitted),
+        ax.plot(angles, linear_fitted,
                 label='Fitted calibration pot')
 
         start_idx, points = slope_check_info
@@ -563,8 +560,6 @@ def fit_data(data, line, plot=False, verbose=False):
         checks = np.zeros_like(linear_pot)
         checks[start_idx:start_idx + points] = linear_pot[start_idx:
                                                           start_idx + points]
-        checks = shift_180(checks)
-
         ax.plot(angles[checks != 0], checks[checks != 0], 'x',
                 label='Linear pot check area')
 
@@ -573,13 +568,13 @@ def fit_data(data, line, plot=False, verbose=False):
         if verbose:
             for pot, pot_values in data['linear'].items():
                 if pot != linear_pot_number:
-                    ax.plot(angles, shift_180(pot_values),
+                    ax.plot(angles, pot_values,
                             label='Calibration pot ({})'.format(pot),
                             linestyle='--', linewidth=0.5)
 
         twin_ax = ax.twinx()
         twin_ax.set_ylabel('Rotary potentiometer [V]')
-        twin_ax.plot(angles, shift_180(rotary_pot), label='Rotary pot',
+        twin_ax.plot(angles, rotary_pot, label='Rotary pot',
                      color='indigo')
         twin_legend(ax, twin_ax, loc='upper right')
 
