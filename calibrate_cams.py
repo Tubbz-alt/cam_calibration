@@ -799,7 +799,7 @@ def main(args):
             print('Failed to save results to {}: {} {}'
                   ''.format(fn, type(ex).__name__, ex))
         else:
-            plt.savefig('{}.pdf'.format(fn))
+            plt.savefig(fn.replace('txt','pdf'))
             print('Saved results to {}'.format(fn))
 
     if args.verbose:
