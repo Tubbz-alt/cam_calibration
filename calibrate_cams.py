@@ -535,7 +535,21 @@ def fit_data(data, line, plot=False, verbose=False):
     fit_result, linear_fitted = cam_sinusoidal_fit(angles, linear_pot)
 
     linear_phase_offset = fit_result['phase']
-    rotary_offset = (rotary_pot[0] / avg_voltage) * gain - linear_phase_offset
+    if line == 'sxr' :
+        # SXR interspace rotary pots have one side of the resistor 
+        # connected to -9.5V and other to +9.5V. 
+        # This gives us the pot readback in range from -9.5 to +9.5V.
+        # When we calculate the offset and normalize rotary pot value, 
+        # we need to shift the voltage to accomodate for negative portion of readback.
+        rotary_offset = ((rotary_pot[0]-np.min(rotary_pot)) / avg_voltage) * gain - linear_phase_offset
+    else:
+        # HXR girder rotary pots have one side of the resistor 
+        # connected to 0V and other to 5V. 
+        # This gives us the pot readback in range from 0 to 5V.
+        # When we calculate the offset and normalize rotary pot value, 
+        # we don't need to shift the voltage.
+        rotary_offset = (rotary_pot[0] / avg_voltage) * gain - linear_phase_offset
+     
 
     # NOTE: octave includes a factor of 2000 below, which we removed
     linear_offset_rms_fit = np.std(linear_pot - linear_fitted)
@@ -785,7 +799,7 @@ def main(args):
             print('Failed to save results to {}: {} {}'
                   ''.format(fn, type(ex).__name__, ex))
         else:
-            plt.savefig('{}.pdf'.format(fn))
+            plt.savefig(fn.replace('txt','pdf'))
             print('Saved results to {}'.format(fn))
 
     if args.verbose:
