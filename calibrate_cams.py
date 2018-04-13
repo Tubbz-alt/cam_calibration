@@ -536,8 +536,18 @@ def fit_data(data, line, plot=False, verbose=False):
 
     linear_phase_offset = fit_result['phase']
     if line == 'sxr' :
+        # SXR interspace rotary pots have one side of the resistor 
+        # connected to -9.5V and other to +9.5V. 
+        # This gives us the pot readback in range from -9.5 to +9.5V.
+        # When we calculate the offset and normalize rotary pot value, 
+        # we need to shift the voltage to accomodate for negative portion of readback.
         rotary_offset = ((rotary_pot[0]-np.min(rotary_pot)) / avg_voltage) * gain - linear_phase_offset
     else:
+        # HXR girder rotary pots have one side of the resistor 
+        # connected to 0V and other to 5V. 
+        # This gives us the pot readback in range from 0 to 5V.
+        # When we calculate the offset and normalize rotary pot value, 
+        # we don't need to shift the voltage.
         rotary_offset = (rotary_pot[0] / avg_voltage) * gain - linear_phase_offset
      
 
