@@ -353,6 +353,7 @@ def get_calibration_data(cams, cam_num, velocity, dwell, voltage_pv,
 
     try:
         motor.enable()
+        time.sleep(2)
         motor.max_velocity_pv.put(velocity, wait=True)
         motor.velocity_pv.put(velocity, wait=True)
         # extend soft limits
@@ -488,7 +489,13 @@ def check_pass_fail(delta_angle, rotary_pot, linear_pot, linear_phase_offset):
     '''
     rotary_peak_idx = np.argmax(rotary_pot)
     start_idx, points = rotary_peak_idx + -1, 10
+    # if max is at first point
+    if start_idx < 0:
+      start_idx = 0
     slope_check_lin = linear_pot[start_idx:start_idx + points]
+    # matching number of points for polyfit
+    if (len(slope_check_lin) < points):
+      points = len(slope_check_lin)
     slope, yint = np.polyfit(range(points), slope_check_lin, 1)
 
     # maximum decreasing slope at 180, shifted by the linear phase offset
@@ -554,9 +561,15 @@ def fit_data(data, line, plot=False, verbose=False):
     # NOTE: octave includes a factor of 2000 below, which we removed
     linear_offset_rms_fit = np.std(linear_pot - linear_fitted)
 
-    slope_check_info, passed = check_pass_fail(angles[1] - angles[0],
+    try:
+        slope_check_info, passed = check_pass_fail(angles[1] - angles[0],
                                                rotary_pot, linear_pot,
                                                linear_phase_offset)
+    except Exception as ex:
+        passed = 0
+        print('ERROR: Rotary Pot position check failed {}: {}\n'
+              'Rotate the pot a small amount in either direction'
+              ''.format(type(ex).__name__, ex))
 
     try:
         fig, ax = plt.subplots(1, 1, figsize=(9, 6))
