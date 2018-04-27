@@ -417,7 +417,7 @@ def sinusoid(angles, amp, freq, phase, offset):
 
 
 def sinusoid_params_from_linear_pot(angles, lin_pot):
-    'Initial guess at the linear sinusoid parameter from the linear pot readout'
+    'Initial guess at linear sinusoid parameters from the linear pot readout'
     amp_guess = (np.max(lin_pot) - np.min(lin_pot)) / 2
     freq_guess = 1.
 
@@ -491,11 +491,12 @@ def check_pass_fail(delta_angle, rotary_pot, linear_pot, linear_phase_offset):
     start_idx, points = rotary_peak_idx + -1, 10
     # if max is at first point
     if start_idx < 0:
-      start_idx = 0
+        start_idx = 0
+
     slope_check_lin = linear_pot[start_idx:start_idx + points]
     # matching number of points for polyfit
-    if (len(slope_check_lin) < points):
-      points = len(slope_check_lin)
+    if len(slope_check_lin) < points:
+        points = len(slope_check_lin)
     slope, yint = np.polyfit(range(points), slope_check_lin, 1)
 
     # maximum decreasing slope at 180, shifted by the linear phase offset
@@ -542,29 +543,30 @@ def fit_data(data, line, plot=False, verbose=False):
     fit_result, linear_fitted = cam_sinusoidal_fit(angles, linear_pot)
 
     linear_phase_offset = fit_result['phase']
-    if line == 'sxr' :
-        # SXR interspace rotary pots have one side of the resistor 
-        # connected to -9.5V and other to +9.5V. 
-        # This gives us the pot readback in range from -9.5 to +9.5V.
-        # When we calculate the offset and normalize rotary pot value, 
-        # we need to shift the voltage to accomodate for negative portion of readback.
-        rotary_offset = ((rotary_pot[0]-np.min(rotary_pot)) / avg_voltage) * gain - linear_phase_offset
+    if line == 'sxr':
+        # SXR interspace rotary pots have one side of the resistor connected to
+        # -9.5V and other to +9.5V.  This gives us the pot readback in range
+        # from -9.5 to +9.5V.
+        # When we calculate the offset and normalize rotary pot value, we need
+        # to shift the voltage to accomodate for negative portion of readback.
+        rotary_offset = (((rotary_pot[0]-np.min(rotary_pot)) / avg_voltage) *
+                         gain - linear_phase_offset)
     else:
-        # HXR girder rotary pots have one side of the resistor 
-        # connected to 0V and other to 5V. 
-        # This gives us the pot readback in range from 0 to 5V.
-        # When we calculate the offset and normalize rotary pot value, 
-        # we don't need to shift the voltage.
-        rotary_offset = (rotary_pot[0] / avg_voltage) * gain - linear_phase_offset
-     
+        # HXR girder rotary pots have one side of the resistor connected to 0V
+        # and other to 5V.  This gives us the pot readback in range from 0 to
+        # 5V.
+        # When we calculate the offset and normalize rotary pot value, we don't
+        # need to shift the voltage.
+        rotary_offset = ((rotary_pot[0] / avg_voltage) * gain -
+                         linear_phase_offset)
 
     # NOTE: octave includes a factor of 2000 below, which we removed
     linear_offset_rms_fit = np.std(linear_pot - linear_fitted)
 
     try:
         slope_check_info, passed = check_pass_fail(angles[1] - angles[0],
-                                               rotary_pot, linear_pot,
-                                               linear_phase_offset)
+                                                   rotary_pot, linear_pot,
+                                                   linear_phase_offset)
     except Exception as ex:
         passed = 0
         print('ERROR: Rotary Pot position check failed {}: {}\n'
@@ -812,7 +814,7 @@ def main(args):
             print('Failed to save results to {}: {} {}'
                   ''.format(fn, type(ex).__name__, ex))
         else:
-            plt.savefig(fn.replace('txt','pdf'))
+            plt.savefig(fn.replace('txt', 'pdf'))
             print('Saved results to {}'.format(fn))
 
     if args.verbose:
