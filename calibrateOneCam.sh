@@ -1,8 +1,8 @@
 #!/bin/bash
 
 usage(){
-  echo "Usage: $0  <serialNumber> <camNumber>"
-  echo "eg.:   $0  SNxxx 1"
+  echo "Usage: $0 <undLine> <PVprefix> <serialNumber> <camNumber>"
+  echo "eg.:   $0 {sxr|hxr} INTRSP:B081:CAL0: SNxxx 1"
   exit 1
 }
 
@@ -10,7 +10,9 @@ usage(){
 # call usage() function if filename not supplied
 [[ $# -eq 0 ]] && usage
 
-SERIAL=$1
-CAM=$2
+LINE=$1
+SEGMENT=$2
+SERIAL=$3
+CAM=$4
 
-python calibrate_cams.py --line sxr --calibrate INTRSP:B081:CAL0: --serial ${SERIAL} -n ${CAM} --velocity 1.4 --dwell 0.2 --store-to-pv
+python calibrate_cams.py --line ${LINE} --calibrate ${SEGMENT} --serial ${SERIAL} -n ${CAM} --velocity 1.4 --dwell 0.2 --store-to-pv
