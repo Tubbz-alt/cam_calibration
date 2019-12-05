@@ -1,5 +1,10 @@
 #!/usr/bin/env python3
-# Cam positioner calibration (rotary/linear potentiometers)
+# LCLS-2 undulator cam positioner calibration (rotary/linear potentiometers)
+
+# Author: K.Lauer (klauer)
+# Modified: 09-04-2019 A.Montironi (alexmon)
+
+#NOTE: Calibration data is saved in $PHYSICS_DATA/undMotion/hgvpu_camCal
 
 from __future__ import print_function
 import time
@@ -17,7 +22,8 @@ import scipy.optimize
 import matplotlib
 
 try:
-    matplotlib.use('Qt5Agg')
+    #matplotlib.use('Qt5Agg')
+    matplotlib.use('Agg')
 except Exception:
     pass
 
@@ -87,7 +93,8 @@ epics.pv.PV = PV
 class CamMotorAndPots(object):
     # Awful OO for my convenience
 
-    def __init__(self, prefix, cam_number, linear_pot_format='LP{}ADCM'):
+    #def __init__(self, prefix, cam_number, linear_pot_format='LP{}:ADCM'):
+    def __init__(self, prefix, cam_number):
         info = self.axis_info[cam_number]
 
         self.prefix = prefix
@@ -96,9 +103,16 @@ class CamMotorAndPots(object):
 
         try:
             self.motor = epics.Motor(self.prefix + info.motor)
+            print('motor pv: ', self.motor)
         except TimeoutError:
             raise TimeoutError('Failed to connect to: {}'
                                ''.format(self.prefix + info.motor))
+
+        # adapt PV name depending if sxr line (ln =2) or not
+        if self.ln==2:
+            linear_pot_format='LP{}:ADCM'
+        else:
+            linear_pot_format='LP{}ADCM'
 
         self.stop_go_pv = self.motor.PV('SPMG')
         self.stop_pv = self.motor.PV('STOP')
@@ -188,16 +202,29 @@ class CamMotorAndPots(object):
 
     @classmethod
     def _get_axis_info(cls, cam_num):
-        return AxisInfo(motor='CM{}MOTOR'.format(cam_num),
+        # HXR line
+        if cls.ln==1:
+           return AxisInfo(motor='CM{}MOTOR'.format(cam_num),
                         rotary_pot_adc='CM{}ADCM'.format(cam_num),
                         rotary_pot_calibrated='CM{}READDEG'.format(cam_num),
                         rotary_pot_gain='CM{}GAINC'.format(cam_num),
                         rotary_pot_offset='CM{}OFFSETC'.format(cam_num),
                         linear_pots=cls.cam_to_linear_pots[cam_num],
                         )
-
+        # SXR line
+        elif cls.ln==2:
+           return AxisInfo(motor='CM{}:MOTR'.format(cam_num),
+                        rotary_pot_adc='RP{}:ADCM'.format(cam_num),
+                        rotary_pot_calibrated='CM{}:READDEG'.format(cam_num),
+                        rotary_pot_gain='CM{}:GAIN'.format(cam_num),
+                        rotary_pot_offset='CM{}:OFFSET'.format(cam_num),
+                        linear_pots=cls.cam_to_linear_pots[cam_num],
+                        )
+        else:
+            raise ValueError('Unknown line: {!r}', cls.ln)
 
 class HXUCamMotorAndPots(CamMotorAndPots):
+    ln = 1
     # Note: linear potentiometers are as follows for the LCLS-I girder:
     # girder potentiometer 1 = LP1-Y (CM1)
     # girder potentiometer 2 = LP2-Y (CM2/CM3)
@@ -216,6 +243,7 @@ class HXUCamMotorAndPots(CamMotorAndPots):
 
 
 class SXUCamMotorAndPots(CamMotorAndPots):
+    ln = 2
     # even horizontal, odd vertical
     cam_to_linear_pots = {
         1: (3, ),
@@ -798,13 +826,19 @@ def main(args):
         plt.savefig('{}.pdf'.format(args.save_to))
     elif args.calibrate:
         timestamp = datetime.datetime.now().strftime('%Y%m%d_%H%M%S')
-        fn = os.path.join('data',
+        # Make the path and the file name for where to save the data
+        physicsLoc = os.environ.get('PHYSICS_DATA')
+        #print(physicsLoc)
+        fn = os.path.join(physicsLoc, 'undMotion/camCal',
                           '{}_cam{}_{}.txt'.format(args.serial, data['cam'],
                                                    timestamp))
-        try:
-            os.makedirs('data')
-        except Exception:
-            pass
+        #fn = os.path.join('data',
+        #                  '{}_cam{}_{}.txt'.format(args.serial, data['cam'],
+        #                                           timestamp))
+        #try:
+        #    os.makedirs('data')
+        #except Exception:
+        #    pass
 
         try:
             with open(fn, 'wt') as f:
